@@ -1,0 +1,96 @@
+#!/usr/bin/env bash
+# pre-commit hook for wine-cellar.
+# Three checks: JSONL validity, view freshness, behind-remote.
+
+set -euo pipefail
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+JSONL="$REPO_ROOT/cellar.jsonl"
+HTML="$REPO_ROOT/cellar-view.html"
+
+# ─────────────────────────────────────────────────────────────────────
+# Check 1: JSONL validity — every line must parse as JSON.
+# ─────────────────────────────────────────────────────────────────────
+if [ -f "$JSONL" ]; then
+  if ! python3 - "$JSONL" <<'PY'
+import json, sys
+path = sys.argv[1]
+errors = []
+with open(path, encoding="utf-8") as f:
+    for i, line in enumerate(f, start=1):
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            json.loads(line)
+        except json.JSONDecodeError as e:
+            errors.append((i, str(e)))
+if errors:
+    print("ERROR: cellar.jsonl has invalid JSON:", file=sys.stderr)
+    for i, msg in errors:
+        print(f"  line {i}: {msg}", file=sys.stderr)
+    sys.exit(1)
+PY
+  then
+    echo "" >&2
+    echo "Aborting commit — fix cellar.jsonl and try again." >&2
+    exit 1
+  fi
+fi
+
+# ─────────────────────────────────────────────────────────────────────
+# Check 2: View freshness — if cellar.jsonl is staged but cellar-view.html isn't,
+# OR cellar-view.html mtime is older than cellar.jsonl, the view needs regen.
+# ─────────────────────────────────────────────────────────────────────
+JSONL_STAGED=0
+HTML_STAGED=0
+if git diff --cached --name-only | grep -qx "cellar.jsonl"; then
+  JSONL_STAGED=1
+fi
+if git diff --cached --name-only | grep -qx "cellar-view.html"; then
+  HTML_STAGED=1
+fi
+
+if [ "$JSONL_STAGED" -eq 1 ] && [ "$HTML_STAGED" -eq 0 ]; then
+  echo "ERROR: cellar.jsonl is staged but cellar-view.html is not." >&2
+  echo "       Run: python3 skill/scripts/generate_view.py" >&2
+  echo "       Then: git add cellar-view.html" >&2
+  echo "" >&2
+  echo "Aborting commit." >&2
+  exit 1
+fi
+
+if [ -f "$JSONL" ] && [ -f "$HTML" ]; then
+  if [ "$JSONL" -nt "$HTML" ]; then
+    echo "ERROR: cellar.jsonl is newer than cellar-view.html — the view is stale." >&2
+    echo "       Run: python3 skill/scripts/generate_view.py" >&2
+    echo "       Then: git add cellar-view.html" >&2
+    echo "" >&2
+    echo "Aborting commit." >&2
+    exit 1
+  fi
+fi
+
+# ─────────────────────────────────────────────────────────────────────
+# Check 3: Behind-remote — fetch quietly and compare.
+# Skips if no upstream is configured (e.g. before first push).
+# ─────────────────────────────────────────────────────────────────────
+if git rev-parse --abbrev-ref --symbolic-full-name '@{u}' >/dev/null 2>&1; then
+  if ! git fetch --quiet 2>/dev/null; then
+    echo "WARNING: git fetch failed — couldn't verify remote state. Continuing." >&2
+  else
+    LOCAL="$(git rev-parse @ 2>/dev/null || echo "")"
+    REMOTE="$(git rev-parse '@{u}' 2>/dev/null || echo "")"
+    BASE="$(git merge-base @ '@{u}' 2>/dev/null || echo "")"
+    if [ -n "$REMOTE" ] && [ "$LOCAL" != "$REMOTE" ] && [ "$LOCAL" = "$BASE" ]; then
+      echo "ERROR: local branch is behind remote." >&2
+      echo "       Run: git pull --ff-only" >&2
+      echo "       Then re-stage and commit." >&2
+      echo "" >&2
+      echo "Aborting commit." >&2
+      exit 1
+    fi
+  fi
+fi
+
+exit 0

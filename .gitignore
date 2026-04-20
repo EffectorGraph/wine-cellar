@@ -1,0 +1,19 @@
+# macOS
+.DS_Store
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Claude session state (when working in this directory)
+.claude/
+
+# Per-user skill config (written by sync_skill.sh, not portable)
+.local-config.json
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*~
