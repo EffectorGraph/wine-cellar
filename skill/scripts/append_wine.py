@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
-"""Append one wine to /Users/sarah/.../cellar.jsonl.
+"""Append one wine to cellar.jsonl.
 
-Reads a JSON object from stdin with these keys (all required; use null or "" for blanks):
+Reads a JSON object from stdin with the 31 objective keys (all present; use null
+or "" for blanks). The 3 feedback keys (status, verdict, impressions) are
+optional and default to {status: "cellared", verdict: null, impressions: []} —
+the wine-buying skill passes status: "pending" when staging a store purchase.
 
   wine, winery, vintage, grapes, subregion, region, country, estate,
   soil, elevation, vine_age, importer,
@@ -10,19 +13,20 @@ Reads a JSON object from stdin with these keys (all required; use null or "" for
   abv, ph, ta, residual_sugar,
   cases_produced, release_date,
   drink_from, cellared_under, drink_by, opened_on,
-  tasting_notes, fallback_tasting_notes
+  tasting_notes, fallback_tasting_notes,
+  [status, verdict, impressions]
 
 Typed fields:
-  - int (required):          vintage, drink_from, cellared_under, drink_by
-  - int (optional/nullable): whole_bunch_pct, new_oak_pct, cases_produced
+  - int (required):          vintage, drink_from, drink_by
+  - int (optional/nullable): whole_bunch_pct, new_oak_pct, cases_produced, cellared_under
   - float (optional):        abv, ph, ta, residual_sugar
-  - str: everything else. `estate` should be "Yes"/"No"/blank.
-    `opened_on`, `harvest_date`, `release_date` are ISO date strings or descriptive.
-    `soil`, `elevation`, `vine_age` use the `~` prefix convention for inferred values.
+  - status: one of pending/cellared/love/like/meh/pass
+  - impressions: JSON array of {date, note} objects
+  - str: everything else.
 
 Path discovery (in order):
   1. WINE_CELLAR_PATH env var — absolute path to cellar.jsonl (override)
-  2. ~/.claude/skills/wine-cellar/.local-config.json → {"repo_path": "..."}; cellar.jsonl = repo_path + "/cellar.jsonl"
+  2. ~/.claude/skills/wine-cellar/.local-config.json → {"repo_path": "..."}
   3. Fallback: print instructions and exit non-zero
 
 Prints a JSON verification blob on stdout after writing.
@@ -32,20 +36,8 @@ import os
 import sys
 from pathlib import Path
 
-# Schema definition — these drive validation
-REQUIRED_KEYS = [
-    "wine", "winery", "vintage", "grapes", "subregion", "region",
-    "country", "estate", "soil", "elevation", "vine_age", "importer",
-    "harvest_date", "fermentation_vessel", "whole_bunch_pct", "malolactic",
-    "barrel_time", "oak_origin", "new_oak_pct",
-    "abv", "ph", "ta", "residual_sugar",
-    "cases_produced", "release_date",
-    "drink_from", "cellared_under", "drink_by", "opened_on",
-    "tasting_notes", "fallback_tasting_notes",
-]
-REQUIRED_INTS = ("vintage", "drink_from", "cellared_under", "drink_by")
-OPTIONAL_INTS = ("whole_bunch_pct", "new_oak_pct", "cases_produced")
-OPTIONAL_FLOATS = ("abv", "ph", "ta", "residual_sugar")
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import schema  # noqa: E402
 
 
 def resolve_cellar_path() -> Path:
@@ -75,41 +67,6 @@ def resolve_cellar_path() -> Path:
     sys.exit(2)
 
 
-def blank(v):
-    return None if v in (None, "") else v
-
-
-def check_int(name, v, required):
-    if v is None or v == "":
-        if required:
-            print(f"ERROR: {name} is required and must be an integer", file=sys.stderr)
-            return False
-        return True
-    if not isinstance(v, int) or isinstance(v, bool):
-        print(
-            f"ERROR: {name} must be a JSON integer (or null for optional fields), "
-            f"got {type(v).__name__}={v!r}",
-            file=sys.stderr,
-        )
-        return False
-    return True
-
-
-def check_float(name, v):
-    if v is None or v == "":
-        return True
-    if isinstance(v, bool):
-        print(f"ERROR: {name} must be a number (or null), got bool", file=sys.stderr)
-        return False
-    if not isinstance(v, (int, float)):
-        print(
-            f"ERROR: {name} must be a JSON number (or null), got {type(v).__name__}={v!r}",
-            file=sys.stderr,
-        )
-        return False
-    return True
-
-
 def main() -> int:
     try:
         data = json.load(sys.stdin)
@@ -117,29 +74,10 @@ def main() -> int:
         print(f"ERROR: invalid JSON on stdin: {e}", file=sys.stderr)
         return 2
 
-    missing = [k for k in REQUIRED_KEYS if k not in data]
-    if missing:
-        print(f"ERROR: missing keys: {missing}", file=sys.stderr)
+    if not schema.validate(data, require_objective=True):
         return 2
 
-    ok = True
-    for k in REQUIRED_INTS:
-        ok &= check_int(k, data[k], required=True)
-    for k in OPTIONAL_INTS:
-        ok &= check_int(k, data[k], required=False)
-    for k in OPTIONAL_FLOATS:
-        ok &= check_float(k, data[k])
-    if not ok:
-        return 2
-
-    # Build the output object with normalized blanks and the canonical key order
-    obj = {}
-    for k in REQUIRED_KEYS:
-        v = data[k]
-        if k in REQUIRED_INTS:
-            obj[k] = v  # already int-validated
-        else:
-            obj[k] = blank(v)
+    obj = schema.normalize(data)
 
     cellar_path = resolve_cellar_path()
     if not cellar_path.exists():

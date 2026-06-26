@@ -1,0 +1,7 @@
+{
+  "_comment": "Living taste profile for the wine-buying skill. Grows as verdicts get logged in cellar.jsonl. likes/dislikes are style-level signals; benchmarks are named reference bottles; notes is free-text. Edit by hand or let the buying/feedback skills append.",
+  "likes": [],
+  "dislikes": [],
+  "benchmarks": [],
+  "notes": ""
+}

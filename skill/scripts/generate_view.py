@@ -7,14 +7,19 @@ Output path is `<repo>/cellar-view.html` (sibling of cellar.jsonl).
 import json
 import os
 import sys
+from collections import Counter
 from html import escape
 from pathlib import Path
 
-# Column order + display labels (matches skill schema)
+# Column order + display labels. The first 31 are the objective fields; the last
+# three (status, verdict, impressions) are the subjective feedback layer.
 COLUMNS = [
+    ("status", "Status"),
     ("wine", "Wine"),
     ("winery", "Winery"),
     ("vintage", "Vintage"),
+    ("verdict", "Verdict"),
+    ("impressions", "Impressions"),
     ("grapes", "Grapes"),
     ("subregion", "Subregion"),
     ("region", "Region"),
@@ -48,6 +53,21 @@ COLUMNS = [
 # Display hints: formatting per column
 PCT_KEYS = {"whole_bunch_pct", "new_oak_pct"}
 PCT_FLOAT_KEYS = {"abv"}
+NUM_KEYS = {
+    "vintage", "whole_bunch_pct", "new_oak_pct", "abv", "ph", "ta",
+    "residual_sugar", "cases_produced", "drink_from", "cellared_under", "drink_by",
+}
+WIDE_KEYS = {"verdict", "impressions", "tasting_notes", "fallback_tasting_notes"}
+
+# Human labels for the status vocabulary.
+STATUS_LABELS = {
+    "pending": "⏳ Pending",
+    "cellared": "Cellared",
+    "love": "♥ Love",
+    "like": "Like",
+    "meh": "Meh",
+    "pass": "Pass",
+}
 
 
 def resolve_cellar_path() -> Path:
@@ -75,8 +95,15 @@ def resolve_cellar_path() -> Path:
 
 def format_cell(key: str, val) -> str:
     """Render one cell's display value."""
-    if val is None:
+    if val is None or val == "":
         return ""
+    if key == "status":
+        return STATUS_LABELS.get(val, str(val))
+    if key == "impressions":
+        # list of {date, note} → stacked "date — note" lines
+        if not isinstance(val, list):
+            return str(val)
+        return "\n".join(f"{escape(str(i.get('date','')))} — {escape(str(i.get('note','')))}" for i in val)
     if key in PCT_KEYS:
         return f"{val}%"
     if key in PCT_FLOAT_KEYS:
@@ -113,37 +140,66 @@ def main() -> int:
 
     # Totals
     total_rows = len(rows)
+    status_counts = Counter((r.get("status") or "cellared") for r in rows)
+    pending = status_counts.get("pending", 0)
     opened_rows = sum(1 for r in rows if r.get("opened_on"))
-    in_cellar = total_rows - opened_rows
     vintages = [r.get("vintage") for r in rows if r.get("vintage") is not None]
     vintage_range = f"{min(vintages)}–{max(vintages)}" if vintages else "—"
+
+    # Verdict tally (drunk + rated bottles)
+    rated = {k: status_counts.get(k, 0) for k in ("love", "like", "meh", "pass")}
 
     out_path = cellar_path.parent / "cellar-view.html"
 
     # Build the HTML
     head_cells = "".join(
-        f'<th data-key="{escape(key)}" data-type="{"num" if key in {"vintage","whole_bunch_pct","new_oak_pct","abv","ph","ta","residual_sugar","cases_produced","drink_from","cellared_under","drink_by"} else "text"}">'
+        f'<th data-key="{escape(key)}" data-type="{"num" if key in NUM_KEYS else "text"}">'
         f'{escape(label)}<span class="sort-arrow"></span></th>'
         for key, label in COLUMNS
     )
 
     body_rows = []
     for r in rows:
+        status = r.get("status") or "cellared"
         cells = []
         for key, _ in COLUMNS:
             val = r.get(key)
             display = format_cell(key, val)
-            # Sort data uses the raw value for numerics, display string otherwise
-            sort_val = escape(str(val) if val is not None else "", quote=True)
-            cells.append(f'<td data-sort="{sort_val}">{escape(display)}</td>')
-        opened_class = " class=\"opened\"" if r.get("opened_on") else ""
-        body_rows.append(f"<tr{opened_class}>{''.join(cells)}</tr>")
+            sort_val = escape(str(val) if val not in (None, "") else "", quote=True)
+            if key == "status":
+                badge = (
+                    f'<span class="badge badge-{escape(status)}">{escape(display)}</span>'
+                    if status else ""
+                )
+                cells.append(f'<td data-sort="{escape(status)}">{badge}</td>')
+                continue
+            classes = []
+            if key in WIDE_KEYS:
+                classes.append("wide")
+            if key == "verdict":
+                classes.append("verdict")
+            if key == "impressions":
+                classes.append("impressions")
+            cls = f' class="{" ".join(classes)}"' if classes else ""
+            # impressions display is pre-escaped (mixed markup) — others escape here
+            content = display if key == "impressions" else escape(display)
+            cells.append(f'<td{cls} data-sort="{sort_val}">{content}</td>')
+        row_classes = [f"status-{status}"]
+        if r.get("opened_on"):
+            row_classes.append("opened")
+        body_rows.append(f'<tr class="{" ".join(row_classes)}">{"".join(cells)}</tr>')
     body_html = "\n      ".join(body_rows)
+
+    rated_html = " · ".join(
+        f'<strong>{rated[k]}</strong> {STATUS_LABELS[k].split(" ")[-1].lower()}'
+        for k in ("love", "like", "meh", "pass") if rated[k]
+    ) or "none rated yet"
 
     html = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Wine Cellar — {escape(str(total_rows))} bottles</title>
 <style>
   :root {{
@@ -154,6 +210,8 @@ def main() -> int:
     --accent: #7a2d2d;
     --hover: #f3efe8;
     --opened: #e8dfd5;
+    --pending: #fbf1d9;
+    --pending-edge: #c79a2e;
   }}
   body {{
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
@@ -186,6 +244,18 @@ def main() -> int:
   .stats strong {{
     color: var(--fg);
   }}
+  .pending-stat {{
+    cursor: pointer;
+    border: 1px solid var(--pending-edge);
+    background: var(--pending);
+    border-radius: 999px;
+    padding: 0.15rem 0.7rem;
+    color: #7a5a12 !important;
+    user-select: none;
+  }}
+  .pending-stat:hover {{ filter: brightness(0.97); }}
+  .pending-stat.active {{ background: var(--pending-edge); color: #fff !important; }}
+  .pending-stat strong {{ color: inherit !important; }}
   .filter-wrap {{
     margin-bottom: 0.75rem;
   }}
@@ -242,15 +312,32 @@ def main() -> int:
   th.sort-asc .sort-arrow::before {{ content: "▲"; color: var(--accent); }}
   th.sort-desc .sort-arrow::before {{ content: "▼"; color: var(--accent); }}
   tr:hover {{ background: var(--hover); }}
-  tr.opened {{ background: var(--opened); font-style: italic; color: var(--muted); }}
-  tr.opened:hover {{ background: #ddd2c3; }}
-  td:first-child {{ min-width: 18ch; }}
-  /* Tasting notes columns: allow wider display but cap */
-  td:nth-last-child(1), td:nth-last-child(2) {{
-    max-width: 36ch;
-    min-width: 20ch;
-    font-size: 12px;
+  /* Pending bottles awaiting your review — the actionable highlight. */
+  tr.status-pending {{ background: var(--pending); }}
+  tr.status-pending td:first-child {{ box-shadow: inset 3px 0 0 var(--pending-edge); }}
+  tr.status-pending:hover {{ background: #f6e9c8; }}
+  /* Opened bottles read as quieter, italic. */
+  tr.opened {{ color: var(--muted); font-style: italic; }}
+  td.wide {{ max-width: 34ch; min-width: 18ch; font-size: 12px; }}
+  td.verdict {{ font-style: italic; color: #5a4a30; }}
+  td.impressions {{ font-size: 11.5px; color: #555; }}
+  td:nth-child(2) {{ min-width: 16ch; font-style: normal; }}
+  /* status badges */
+  .badge {{
+    display: inline-block;
+    padding: 0.1rem 0.5rem;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 600;
+    white-space: nowrap;
+    font-style: normal;
   }}
+  .badge-pending  {{ background: #f6e3b0; color: #6b4e0e; }}
+  .badge-cellared {{ background: #e6e1d8; color: #5c574e; }}
+  .badge-love     {{ background: #2f7d4f; color: #fff; }}
+  .badge-like     {{ background: #cfe7d4; color: #235c38; }}
+  .badge-meh      {{ background: #e8e0d2; color: #7a6f55; }}
+  .badge-pass     {{ background: #e9c9c4; color: #7a2d2d; }}
   footer {{
     margin-top: 1rem;
     color: var(--muted);
@@ -262,9 +349,10 @@ def main() -> int:
   <header>
     <h1>Wine Cellar</h1>
     <div class="stats">
-      <span><strong>{total_rows}</strong> rows</span>
-      <span><strong>{in_cellar}</strong> in cellar</span>
+      <span><strong>{total_rows}</strong> bottles</span>
+      <span class="pending-stat" id="pendingStat" title="Click to show only bottles awaiting your review"><strong>{pending}</strong> pending review</span>
       <span><strong>{opened_rows}</strong> opened</span>
+      <span>Rated: {rated_html}</span>
       <span>Vintages: <strong>{escape(vintage_range)}</strong></span>
     </div>
   </header>
@@ -281,16 +369,27 @@ def main() -> int:
   </div>
   <footer>
     Auto-generated from <code>cellar.jsonl</code> by <code>skill/scripts/generate_view.py</code>.
-    Click any column header to sort. Italic rows are opened bottles.
+    Click a column header to sort. Amber rows are pending your review. Opened bottles are italic.
   </footer>
 <script>
 (() => {{
   const table = document.getElementById("cellar");
   const tbody = table.querySelector("tbody");
   const filter = document.getElementById("filter");
+  const pendingStat = document.getElementById("pendingStat");
 
   let sortKey = null;
   let sortDir = 1;
+  let pendingOnly = false;
+
+  function applyFilters() {{
+    const q = filter.value.trim().toLowerCase();
+    tbody.querySelectorAll("tr").forEach((r) => {{
+      const matchesText = !q || r.textContent.toLowerCase().includes(q);
+      const matchesPending = !pendingOnly || r.classList.contains("status-pending");
+      r.style.display = (matchesText && matchesPending) ? "" : "none";
+    }});
+  }}
 
   function sortBy(th) {{
     const key = th.dataset.key;
@@ -301,10 +400,7 @@ def main() -> int:
       sortKey = key;
       sortDir = 1;
     }}
-    // Mark arrows
-    table.querySelectorAll("th").forEach((h) => {{
-      h.classList.remove("sort-asc", "sort-desc");
-    }});
+    table.querySelectorAll("th").forEach((h) => h.classList.remove("sort-asc", "sort-desc"));
     th.classList.add(sortDir === 1 ? "sort-asc" : "sort-desc");
 
     const idx = [...th.parentNode.children].indexOf(th);
@@ -323,14 +419,14 @@ def main() -> int:
   }}
   table.querySelectorAll("th").forEach((th) => th.addEventListener("click", () => sortBy(th)));
 
-  filter.addEventListener("input", () => {{
-    const q = filter.value.trim().toLowerCase();
-    const rows = tbody.querySelectorAll("tr");
-    rows.forEach((r) => {{
-      const text = r.textContent.toLowerCase();
-      r.style.display = text.includes(q) ? "" : "none";
+  filter.addEventListener("input", applyFilters);
+  if (pendingStat) {{
+    pendingStat.addEventListener("click", () => {{
+      pendingOnly = !pendingOnly;
+      pendingStat.classList.toggle("active", pendingOnly);
+      applyFilters();
     }});
-  }});
+  }}
 }})();
 </script>
 </body>
