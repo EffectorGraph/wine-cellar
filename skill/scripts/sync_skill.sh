@@ -26,8 +26,11 @@ mkdir -p "$SKILL_DST/scripts"
 
 # Copy skill files
 cp "$SKILL_SRC/SKILL.md" "$SKILL_DST/SKILL.md"
+cp "$SKILL_SRC/scripts/schema.py" "$SKILL_DST/scripts/schema.py"
 cp "$SKILL_SRC/scripts/append_wine.py" "$SKILL_DST/scripts/append_wine.py"
+cp "$SKILL_SRC/scripts/update_wine.py" "$SKILL_DST/scripts/update_wine.py"
 cp "$SKILL_SRC/scripts/generate_view.py" "$SKILL_DST/scripts/generate_view.py"
+cp "$SKILL_SRC/scripts/test_backend.py" "$SKILL_DST/scripts/test_backend.py"
 cp "$SKILL_SRC/scripts/sync_skill.sh" "$SKILL_DST/scripts/sync_skill.sh"
 chmod +x "$SKILL_DST/scripts/"*.py "$SKILL_DST/scripts/sync_skill.sh"
 
@@ -50,6 +53,20 @@ EOF
 echo "✓ Skill installed at $SKILL_DST"
 echo "✓ Config written: $CONFIG_PATH"
 echo "  repo_path → $REPO_ROOT"
+
+# ── Companion wine-buying skill (shares this repo's cellar + backend scripts) ──
+BUYING_SRC="$REPO_ROOT/wine-buying"
+BUYING_DST="$HOME/.claude/skills/wine-buying"
+if [ -d "$BUYING_SRC" ]; then
+  mkdir -p "$BUYING_DST"
+  cp "$BUYING_SRC/SKILL.md" "$BUYING_DST/SKILL.md"
+  cat > "$BUYING_DST/.local-config.json" <<EOF
+{
+  "repo_path": "$REPO_ROOT"
+}
+EOF
+  echo "✓ wine-buying skill installed at $BUYING_DST"
+fi
 echo ""
 echo "Next steps:"
 echo "  1. Restart your Claude session to pick up skill changes"

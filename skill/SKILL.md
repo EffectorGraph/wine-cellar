@@ -1,27 +1,38 @@
 ---
 name: wine-cellar
-description: Catalogue a wine into the shared Wilterson/EffectorGraph wine-cellar database. Data lives as JSONL in a git repo; an HTML view is auto-regenerated on each edit and both files commit-push to GitHub. Use this skill whenever the user wants to enter, add, catalogue, log, or cellar a specific wine, bottle, or vintage into their collection — e.g. "add the 2019 Opus One", "cellar this: ...", "let's enter the next one — Aonair Mountains Reserve 2021", "put this bottle in the spreadsheet / database / cellar". Also triggers when the user names a specific wine plus a vintage year in a collection-management context. Do NOT use for general wine questions (pairings, tasting discussions, recommendations, winery history) — only for actual database entry.
+description: Catalogue wines into and manage the shared Wilterson/EffectorGraph wine-cellar database — entry, review of store-staged bottles, and tasting feedback. Data lives as JSONL in a git repo; an HTML view is auto-regenerated on each edit and both files commit-push to GitHub. Use this skill when the user wants to (1) enter/add/log/cellar a specific wine + vintage ("add the 2019 Opus One", "cellar this: ..."); (2) review bottles staged from a store run and set their target open year ("review my pending bottles", "let's finish logging what I bought"); or (3) leave tasting feedback on a bottle they're drinking ("opening the Porter Cave Dwellers tonight", "let me tell you how that Cab was", "update my notes on X as I get through it"). Also triggers when the user names a specific wine + vintage in a collection-management context. Do NOT use for picking wines to buy at a store (that's the wine-buying skill) or general wine questions (pairings, winery history).
 ---
 
 # Wine Cellar (JSONL + HTML, git-backed)
 
-You are cataloguing a wine into the shared wine-cellar database. The database lives as a JSONL file in a two-user GitHub repo; an HTML view is auto-regenerated on every edit. Your job: research the named wine, propose a cellaring window, confirm with the user, then append one JSON line and regenerate + commit + push.
+You manage the shared wine-cellar database across a bottle's life: **enter** a wine, **review** bottles staged from a store run, and capture **tasting feedback** while drinking. The database lives as a JSONL file in a two-user GitHub repo; an HTML view is auto-regenerated on every edit. The companion **wine-buying** skill handles store recommendations and stages purchases as `pending` rows for this skill to review.
 
 Address the user as "Your Highness". Be concise.
 
+Pick the workflow by intent:
+- New bottle to log → **[Per-wine entry workflow](#per-wine-workflow)**
+- "Review my pending bottles" / finish logging a store run → **[Review staged bottles](#review-staged-bottles)**
+- "Opening / drinking X", leaving or updating a verdict → **[Drink + feedback workflow](#drink--feedback-workflow)**
+
 ## Files
 
-- **`<repo>/cellar.jsonl`** — source of truth, one wine per line
+- **`<repo>/cellar.jsonl`** — source of truth, one wine per line (34 fields)
 - **`<repo>/cellar-view.html`** — auto-generated from JSONL, do not edit by hand
-- **`<repo>/skill/scripts/append_wine.py`** — writes one row (JSON on stdin)
+- **`<repo>/preferences.json`** — living likes/dislikes/benchmarks; read by wine-buying, grown as verdicts land
+- **`<repo>/skill/scripts/schema.py`** — single source of truth for field order + validation (imported by the others)
+- **`<repo>/skill/scripts/append_wine.py`** — appends one row (JSON on stdin)
+- **`<repo>/skill/scripts/update_wine.py`** — patches one existing row by wine+vintage (review + feedback)
 - **`<repo>/skill/scripts/generate_view.py`** — rebuilds cellar-view.html
-- **`<repo>/.githooks/pre-commit`** — guards against invalid JSONL, stale view, behind-remote state
+- **`<repo>/skill/scripts/test_backend.py`** — round-trip tests for append + update
+- **`<repo>/.githooks/pre-commit`** — guards against invalid JSONL, bad status, stale view, behind-remote state
 
 Find `<repo>`: `~/.claude/skills/wine-cellar/.local-config.json` → `repo_path`. Set by `sync_skill.sh` at install time.
 
-## The 31 fields (JSONL schema)
+## The 34 fields (JSONL schema)
 
-Every row is a JSON object with all 31 keys present. Use `null` for unknown values — do not omit keys. Field order in each line is the order below (for readable git diffs).
+Every row is a JSON object with all 34 keys present: 31 **objective** fields (the wine's facts) followed by 3 **subjective** feedback fields (your verdict). Use `null` for unknown values — do not omit keys. Field order in each line is the order below (for readable git diffs). `schema.py` is the authority — the scripts validate against it.
+
+The feedback layer is ported from the green-tea-log model: a categorical `status` (no numeric scores), a prose `verdict`, and an evolving `impressions` log. Append/update fill these — you don't hand-edit JSONL.
 
 | # | Key | Type | Rule |
 |---|---|---|---|
@@ -51,11 +62,14 @@ Every row is a JSON object with all 31 keys present. Use `null` for unknown valu
 | 24 | `cases_produced` | int/null | 750ml-equivalent cases. |
 | 25 | `release_date` | str/null | ISO date or month/year. |
 | 26 | `drink_from` | int | Earliest year at plateau. |
-| 27 | `cellared_under` | int | User's target year to open this bottle. **User supplies this** — do not guess. |
+| 27 | `cellared_under` | int/null | User's target year to open this bottle. **User supplies this** — do not guess. `null` while a bottle is `pending` (staged at the store, not yet reviewed); filled at review time. |
 | 28 | `drink_by` | int | Latest year before decline. |
 | 29 | `opened_on` | str/null | ISO date actually opened. Blank while cellared. Cellared Under = *intent*, Opened On = *actual*. |
 | 30 | `tasting_notes` | str/null | **STRICT.** Vintage-specific producer/critic notes only. Blank if no vintage-specific note exists. Do NOT generalize from grape/region/adjacent vintage. |
 | 31 | `fallback_tasting_notes` | str/null | **LOOSER.** Used only when `tasting_notes` is blank. Cross-vintage, adjacent-vintage, house-style notes — always prefixed with context (`"Cross-vintage:"`, `"2022 vintage:"`, `"House style:"`). |
+| 32 | `status` | enum | Lifecycle + verdict in one field: `pending` (staged at store, awaiting review) → `cellared` (reviewed, target year set, not yet drunk) → on drinking, one shared verdict: `love` / `like` / `meh` / `pass`. Default on plain entry: `cellared`. |
+| 33 | `verdict` | str/null | The shared, plain-spoken summary judgment (one or two sentences). Rendered italic in the view. Blank until drunk. This is **your** voice, not a critic's — keep `tasting_notes`/`fallback` for sourced notes. |
+| 34 | `impressions` | array | Evolving log of how it actually drank: `[{"date": "2026-06-26", "note": "..."}]`. Append-only — first pour, after it opens up, last glass, next-day recork. Empty `[]` until drunk. |
 
 ## Per-wine workflow
 
@@ -72,6 +86,42 @@ Every row is a JSON object with all 31 keys present. Use `null` for unknown valu
 6. **Ask for Cellared Under.** Wait for user to supply the target year and confirm or override other fields.
 7. **Orchestrate the commit** (see Git Sync Workflow below).
 8. **Verify.** Report row count, whether view regenerated, and whether push succeeded.
+
+## Review staged bottles
+
+When the user says "review my pending bottles" / "let's finish logging the store run", they're filling in the **opinion** field the wine-buying skill left blank: `cellared_under` (their target open year). The research is already done — these rows are complete except for that.
+
+1. **Find pending rows.** Read `cellar.jsonl`; list every row with `status: "pending"`. For each, show the small report (winery · vintage · grapes · region · suggested drink window from `drink_from`/`drink_by`).
+2. **Ask for `cellared_under`** per bottle (target year to open). One question per bottle, or batch them.
+3. **Patch each** via `update_wine.py` — set `cellared_under` and flip `status` to `cellared`:
+   ```bash
+   python3 skill/scripts/update_wine.py <<'JSON'
+   { "match": {"wine": "<exact name>", "vintage": 2021},
+     "set": {"cellared_under": 2030, "status": "cellared"} }
+   JSON
+   ```
+4. Regenerate view → commit (`Review: set cellared-under for <wine> <vintage>`) → push. See Git sync workflow.
+
+## Drink + feedback workflow
+
+When the user is opening / drinking a bottle and wants the story plus to leave a verdict. This is the green-tea-log feedback loop — **prose and vibes, no scores.**
+
+1. **Surface the bottle.** Find its row by name (+ vintage if ambiguous). Print the made-how / vendor / window: grapes, region, estate, fermentation, oak, ABV, drink window, and any `tasting_notes`/`fallback_tasting_notes`. This is the "how was it made" the user wants in hand while sipping.
+2. **Talk it through.** Capture impressions as they come. The user may give one verdict, or evolve it across the night / next day — **append, don't overwrite.** Each `impressions` entry is `{date, note}`; label the moment in the note ("first pour", "+45 min", "last glass", "recorked, day 2").
+3. **Patch via `update_wine.py`:**
+   - First sitting: set `opened_on` (ISO date), append the first impression, set a `verdict` and `status` (`love`/`like`/`meh`/`pass`).
+     ```bash
+     python3 skill/scripts/update_wine.py <<'JSON'
+     { "match": {"wine": "<exact name>", "vintage": 2019},
+       "set": {"status": "like", "verdict": "<one or two plain-spoken sentences>", "opened_on": "2026-06-26"},
+       "append_impression": {"date": "2026-06-26", "note": "First pour: tight, opens after 30 min."} }
+     JSON
+     ```
+   - Coming back mid-bottle / next day: just `append_impression` (and refine `verdict`/`status` if the take changed).
+4. **Offer to update `preferences.json`** when a verdict reveals a style-level like/dislike ("savory not jammy", "too oaky") or a new benchmark. Edit it directly (it's a plain JSON object) and stage it with the same commit.
+5. Regenerate view → commit (`Feedback: <wine> <vintage> — <status>`) → push.
+
+**Verdict voice:** match the user's green-tea-log register — terse, declarative, a little colloquial ("Punches above its weight", "Fell flat after 20 minutes"). Write the verdict in the user's voice from what they tell you; don't invent sensory detail they didn't give.
 
 ## Git sync workflow (the orchestration)
 
@@ -104,8 +154,13 @@ git push
 
 **Commit message conventions:**
 - New row: `Add <wine> <vintage>` (e.g. `Add Porter Family Vineyards Barre Azure 2023`)
-- Update existing: `Update <wine>: <reason>` (e.g. `Update Aonair Mountains 2021: add Opened On 2026-10-15`)
+- Staged purchases (wine-buying): `Stage N bottles from <shop/date>`
+- Review (set cellared-under): `Review: set cellared-under for <wine> <vintage>`
+- Feedback (drinking): `Feedback: <wine> <vintage> — <status>`
+- Other update: `Update <wine>: <reason>` (e.g. `Update Aonair Mountains 2021: add Opened On 2026-10-15`)
 - Schema / code: `Schema: <change>` or `Skill: <change>`
+
+For review/feedback, **step 2 of the orchestration uses `update_wine.py`** (patch by wine+vintage) instead of `append_wine.py`. Everything else — pull, regenerate, add, commit, push — is identical.
 
 **On pull failure (non-fast-forward):** report the conflict to the user — do not auto-resolve. Typical cause: husband has pushed commits since the user's last pull. Tell the user to manually sort it out via `git pull --rebase` or ask for guidance.
 

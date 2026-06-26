@@ -9,12 +9,19 @@ JSONL="$REPO_ROOT/cellar.jsonl"
 HTML="$REPO_ROOT/cellar-view.html"
 
 # ─────────────────────────────────────────────────────────────────────
-# Check 1: JSONL validity — every line must parse as JSON.
+# Check 1: JSONL validity — every line must parse as JSON, and `status`
+# (if present) must be one of the allowed values (imported from schema.py
+# so this check can't drift from the scripts).
 # ─────────────────────────────────────────────────────────────────────
 if [ -f "$JSONL" ]; then
-  if ! python3 - "$JSONL" <<'PY'
-import json, sys
+  if ! python3 - "$JSONL" "$REPO_ROOT" <<'PY'
+import json, os, sys
 path = sys.argv[1]
+sys.path.insert(0, os.path.join(sys.argv[2], "skill", "scripts"))
+try:
+    from schema import ALLOWED_STATUS
+except Exception:
+    ALLOWED_STATUS = ("pending", "cellared", "love", "like", "meh", "pass")
 errors = []
 with open(path, encoding="utf-8") as f:
     for i, line in enumerate(f, start=1):
@@ -22,11 +29,15 @@ with open(path, encoding="utf-8") as f:
         if not line:
             continue
         try:
-            json.loads(line)
+            obj = json.loads(line)
         except json.JSONDecodeError as e:
-            errors.append((i, str(e)))
+            errors.append((i, f"invalid JSON: {e}"))
+            continue
+        st = obj.get("status")
+        if st is not None and st not in ALLOWED_STATUS:
+            errors.append((i, f"bad status {st!r} (allowed: {list(ALLOWED_STATUS)})"))
 if errors:
-    print("ERROR: cellar.jsonl has invalid JSON:", file=sys.stderr)
+    print("ERROR: cellar.jsonl problems:", file=sys.stderr)
     for i, msg in errors:
         print(f"  line {i}: {msg}", file=sys.stderr)
     sys.exit(1)

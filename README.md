@@ -1,18 +1,33 @@
 # Wine Cellar
 
-A shared wine-cellar database for the Wilterson household. Data lives as JSONL, with an auto-generated HTML view for browsing. Editing happens primarily via Claude Code using the bundled `wine-cellar` skill.
+A shared wine-cellar database for the Wilterson household. Data lives as JSONL, with an auto-generated HTML view for browsing. Editing happens primarily via Claude Code using two bundled skills.
+
+## The bottle lifecycle
+
+The repo tracks a bottle from shelf to last glass, as a loop:
+
+1. **Buy** — at the store, the **`wine-buying`** skill reads shelf photos, recommends what to grab based on what you've loved/passed (`cellar.jsonl` verdicts + `preferences.json`), and stages each purchase as a `pending` row.
+2. **Review** — the **`wine-cellar`** skill surfaces `pending` bottles so you set a target opening year; they flip to `cellared`.
+3. **Drink** — when you open one, `wine-cellar` shows how it was made and captures your **verdict** + an evolving **impressions** log (`love`/`like`/`meh`/`pass`).
+
+Each verdict feeds the next shopping trip. Every row carries 34 fields: 31 objective facts + 3 subjective feedback fields (`status`, `verdict`, `impressions`).
 
 ## What's in the repo
 
 | File | Role |
 |---|---|
-| `cellar.jsonl` | **Source of truth.** One JSON object per wine. Edit via the skill, not by hand (but manual edits ARE allowed — see below). |
-| `cellar-view.html` | **Auto-generated** sortable/filterable table. Regenerated on every edit by `generate_view.py`. Don't edit by hand. |
-| `skill/SKILL.md` | The Claude Code skill that drives cellar entry. |
-| `skill/scripts/append_wine.py` | Writes one row of JSONL. Called by the skill. |
+| `cellar.jsonl` | **Source of truth.** One JSON object per wine, 34 fields. Edit via the skills, not by hand (but manual edits ARE allowed — see below). |
+| `cellar-view.html` | **Auto-generated** sortable/filterable table — status badges, pending-review surfacing, verdicts, impressions. Regenerated on every edit. Don't edit by hand. |
+| `preferences.json` | Living likes / dislikes / benchmarks taste profile. Read by `wine-buying` to drive recommendations; grows as verdicts land. |
+| `skill/SKILL.md` | The `wine-cellar` skill: entry, review of pending bottles, drink feedback. |
+| `wine-buying/SKILL.md` | The `wine-buying` skill: shelf photos → recommend → stage purchases. Shares this repo's backend. |
+| `skill/scripts/schema.py` | Single source of truth for field order + validation. Imported by the other scripts and the pre-commit hook. |
+| `skill/scripts/append_wine.py` | Appends one row of JSONL. |
+| `skill/scripts/update_wine.py` | Patches one existing row by wine+vintage (review + feedback). |
 | `skill/scripts/generate_view.py` | Rebuilds `cellar-view.html` from `cellar.jsonl`. |
-| `skill/scripts/sync_skill.sh` | Installs the skill into `~/.claude/skills/wine-cellar/` and writes the per-user path config. |
-| `.githooks/pre-commit` | Guards against invalid JSONL, stale view, behind-remote commits. |
+| `skill/scripts/test_backend.py` | Round-trip tests for append + update. |
+| `skill/scripts/sync_skill.sh` | Installs both skills into `~/.claude/skills/` and writes the per-user path config. |
+| `.githooks/pre-commit` | Guards against invalid JSONL, bad `status`, stale view, behind-remote commits. |
 | `config.example.json` | Placeholder. The real per-user `.local-config.json` is written by `sync_skill.sh` and gitignored. |
 
 ## Sarah's setup — already done
@@ -99,7 +114,10 @@ You can edit `cellar.jsonl` directly if the skill isn't available:
 ### Commit messages
 
 - New row: `Add <wine name> <vintage>`
-- Update: `Update <wine>: <reason>` (e.g. "Update Aonair 2021: set Opened On 2026-12-24")
+- Staged purchases (wine-buying): `Stage N bottles from <shop/date>`
+- Review (set target year): `Review: set cellared-under for <wine> <vintage>`
+- Feedback (drinking): `Feedback: <wine> <vintage> — <status>`
+- Other update: `Update <wine>: <reason>` (e.g. "Update Aonair 2021: set Opened On 2026-12-24")
 - Schema or skill changes: `Schema: <change>` or `Skill: <change>`
 
 ### Pull-before-edit
