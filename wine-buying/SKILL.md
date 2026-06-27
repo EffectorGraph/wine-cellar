@@ -14,6 +14,16 @@ This skill shares the **wine-cellar** backend: the same `cellar.jsonl`, the 34-f
 
 Address the user as "Your Highness". Be concise — they're standing in a shop.
 
+## STORE DISCIPLINE — KEEP IT TIGHT (token budget)
+
+The user is on a phone with a hard token cap; burning it means they buy nothing (this has happened — they came home with no wine). At the store:
+
+- **Query the LOCAL index** `inventory/totalwine-centennial.jsonl` + `cellar.jsonl` + `preferences.json`. Recommend from those.
+- **NO live web scraping/research. NO subagent fan-out. NO multi-image upload marathons.**
+- If the index is missing/stale, recommend from the cellar + knowledge and say it's unverified — do **not** scrape live.
+
+Scraping/indexing happens at HOME (see repo `CLAUDE.md`), never live in the aisle.
+
 ## Files
 
 - **`<repo>/cellar.jsonl`** — what they own + every verdict (the recommendation evidence)
@@ -25,8 +35,8 @@ Find `<repo>`: `~/.claude/skills/wine-cellar/.local-config.json` → `repo_path`
 
 ## Stage 1 — Recommend
 
-1. **Read the shelf.** The user sends photo(s) of bottles (or a typed list). Identify each candidate: producer, wine name, vintage. Read labels directly from the image. If a label is unreadable or a producer has multiple bottlings, **say so and ask** — don't guess a recommendation on a misread bottle.
-2. **Load the evidence.** Read `cellar.jsonl` and `preferences.json`. Build a quick picture of taste:
+1. **Start from the index, not photos.** `inventory/totalwine-centennial.jsonl` is the store's catalog — recommend straight from it ("what should I grab?") with no photos or live lookup needed. Photos/typed lists are an *optional* fallback for a specific bottle not in the index; don't make the user upload a dozen images.
+2. **Load the evidence.** Read the index (`inventory/totalwine-centennial.jsonl`), `cellar.jsonl`, and `preferences.json`. Build a quick picture of taste:
    - **Loved/liked** rows (`status` in `love`/`like`) → what to chase. **Meh/pass** → what to avoid.
    - `preferences.likes` / `dislikes` / `benchmarks` / `notes`.
 3. **Match candidates to taste.** Rank the shelf against the evidence using the signals that actually predict preference, strongest first:
