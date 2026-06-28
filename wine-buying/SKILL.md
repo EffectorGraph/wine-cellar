@@ -18,7 +18,9 @@ Address the user as "Your Highness". Be concise — they're standing in a shop.
 
 The user is on a phone with a hard token cap; burning it means they buy nothing (this has happened — they came home with no wine). At the store:
 
-- **Query the LOCAL index** `inventory/totalwine-centennial.jsonl` + `cellar.jsonl` + `preferences.json`. Recommend from those.
+- **Query the LOCAL index with `inventory/query_inventory.py`** (it prints only matches — never read the raw `totalwine-centennial.jsonl` into context), then cross-ref `cellar.jsonl` + `preferences.json`. Recommend from those.
+  - e.g. `python3 inventory/query_inventory.py --varietal cabernet --region napa --max-price 60 --limit 10`
+  - filters: `--varietal --type --region --text --min-price --max-price --priced-only --limit`. Price shows `n/a` until the catalog is price-enriched at home — recommend by name/varietal/region and confirm the shelf tag.
 - **NO live web scraping/research. NO subagent fan-out. NO multi-image upload marathons.**
 - If the index is missing/stale, recommend from the cellar + knowledge and say it's unverified — do **not** scrape live.
 
@@ -35,8 +37,8 @@ Find `<repo>`: `~/.claude/skills/wine-cellar/.local-config.json` → `repo_path`
 
 ## Stage 1 — Recommend
 
-1. **Start from the index, not photos.** `inventory/totalwine-centennial.jsonl` is the store's catalog — recommend straight from it ("what should I grab?") with no photos or live lookup needed. Photos/typed lists are an *optional* fallback for a specific bottle not in the index; don't make the user upload a dozen images.
-2. **Load the evidence.** Read the index (`inventory/totalwine-centennial.jsonl`), `cellar.jsonl`, and `preferences.json`. Build a quick picture of taste:
+1. **Start from the index, not photos.** Query the local catalog with `query_inventory.py` ("what should I grab?") — no photos or live lookup needed. Translate the ask into filters (`--varietal`, `--region`, `--type`, `--max-price`, `--text`) and run it; it prints only the matches. Photos/typed lists are an *optional* fallback for a specific bottle not in the index; don't make the user upload a dozen images.
+2. **Load the evidence.** Run the relevant `query_inventory.py` filters for the ask, and read `cellar.jsonl` + `preferences.json` (small files). Do **not** read the raw 19k-row `totalwine-centennial.jsonl` into context — that's what the query script is for. Build a quick picture of taste:
    - **Loved/liked** rows (`status` in `love`/`like`) → what to chase. **Meh/pass** → what to avoid.
    - `preferences.likes` / `dislikes` / `benchmarks` / `notes`.
 3. **Match candidates to taste.** Rank the shelf against the evidence using the signals that actually predict preference, strongest first:

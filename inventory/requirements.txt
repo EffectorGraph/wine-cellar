@@ -1,0 +1,7 @@
+# Only needed for inventory/enrich_prices.py (Layer 2 — per-store price/stock/aisle).
+# build_catalog.py and query_inventory.py are pure stdlib and need none of this.
+#
+# Price is hydrated client-side by Total Wine's product micro-frontend, so a plain
+# HTTP client (requests/curl_cffi) can't see it — we render the page with a real
+# local browser and read the live DOM. nodriver also clears the PerimeterX wall.
+nodriver>=0.50
