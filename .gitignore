@@ -18,8 +18,7 @@ __pycache__/
 *.swp
 *~
 
-# Inventory scraper: venv + sampling/debug artifacts (the JSONL index IS committed)
+# Inventory scanner: venv + per-run artifacts (the JSONL index IS committed)
 inventory/.venv/
-inventory/.catalog-sample.txt
-inventory/.price-sample.html
-inventory/.sample.html
+inventory/.refresh.log
+inventory/.store-changes.txt

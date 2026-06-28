@@ -1,15 +1,14 @@
 #!/usr/bin/env python3
-"""Token-tight query over the local Total Wine catalog (totalwine-centennial.jsonl).
+"""Token-tight query over the local #2302 store inventory (totalwine-centennial.jsonl).
 
-This is the ONLY scraper-side thing to run AT THE STORE. It filters the local
-index and prints just the handful of matches — it never loads the whole catalog
-into the agent's context. Build/refresh the index at home with build_catalog.py;
-fill price/stock at home with enrich_prices.py.
+The ONLY scraper-side thing to run AT THE STORE. Filters the local index and prints
+only the matches — price, stock count, and shelf location — never the whole file.
+Refresh the index at home with scan_store.py (or the wine-inventory-refresh skill).
 
 Examples:
-  python3 inventory/query_inventory.py --varietal cabernet --region napa --max-price 60
-  python3 inventory/query_inventory.py --type red-wine --text bordeaux-blend --limit 10
-  python3 inventory/query_inventory.py --text mouton
+  python3 inventory/query_inventory.py --varietal cabernet --max-price 60
+  python3 inventory/query_inventory.py --type red-wine --region napa --sort stock
+  python3 inventory/query_inventory.py --text caymus
 """
 import argparse
 import json
@@ -20,62 +19,63 @@ INDEX = Path(__file__).parent / "totalwine-centennial.jsonl"
 
 def load():
     if not INDEX.exists():
-        raise SystemExit(f"no index at {INDEX} — run build_catalog.py at home first")
+        raise SystemExit(f"no index at {INDEX} — run scan_store.py at home first")
     return [json.loads(line) for line in INDEX.read_text().splitlines() if line.strip()]
 
 
 def matches(r, a):
-    slug = r["slug"].lower()
     name = r["name"].lower()
-    region = (r["region"] or "").lower()
     if a.varietal and a.varietal.lower() not in (r["varietal"] or "").lower():
         return False
     if a.type and a.type.lower() not in (r["wine_type"] or "").lower():
         return False
-    if a.region and a.region.lower() not in (region + " " + slug):
+    if a.region and a.region.lower() not in name:  # region words live in the wine name
         return False
     for t in a.text or []:
-        if t.lower() not in (name + " " + slug):
+        if t.lower() not in (name + " " + (r.get("brand") or "").lower()):
             return False
     price = r.get("price")
-    if a.priced_only and price is None:
+    if a.min_price is not None and price < a.min_price:
         return False
-    if price is not None:
-        if a.max_price is not None and price > a.max_price:
-            return False
-        if a.min_price is not None and price < a.min_price:
-            return False
+    if a.max_price is not None and price > a.max_price:
+        return False
+    if a.min_stock is not None and (r.get("stock") or 0) < a.min_stock:
+        return False
     return True
 
 
 def main():
-    ap = argparse.ArgumentParser(description="Filter the local Total Wine catalog.")
+    ap = argparse.ArgumentParser(description="Filter the local Total Wine #2302 in-stock inventory.")
     ap.add_argument("--varietal", help="substring of varietal, e.g. cabernet")
     ap.add_argument("--type", help="wine_type, e.g. red-wine, white-wine")
-    ap.add_argument("--region", help="substring of region or slug, e.g. napa, pauillac")
-    ap.add_argument("--text", action="append", help="substring on name/slug (repeatable)")
+    ap.add_argument("--region", help="region word as it appears in the wine name, e.g. napa, sonoma")
+    ap.add_argument("--text", action="append", help="substring on name/brand (repeatable)")
     ap.add_argument("--min-price", type=float)
     ap.add_argument("--max-price", type=float)
-    ap.add_argument("--priced-only", action="store_true", help="only rows with a scraped price")
+    ap.add_argument("--min-stock", type=int, help="only wines with at least N bottles in stock")
+    ap.add_argument("--sort", choices=["price", "stock", "name"], default="price")
     ap.add_argument("--urls", action="store_true", help="also print product URLs")
     ap.add_argument("--limit", type=int, default=20)
     a = ap.parse_args()
 
     rows = [r for r in load() if matches(r, a)]
-    rows.sort(key=lambda r: (r.get("price") is None, r.get("price") or 0, r["name"]))
+    keyfn = {
+        "price": lambda r: (r["price"], r["name"]),
+        "stock": lambda r: (-(r.get("stock") or 0), r["price"]),
+        "name": lambda r: r["name"],
+    }[a.sort]
+    rows.sort(key=keyfn)
     shown = rows[: a.limit]
 
     for r in shown:
-        price = r.get("price")
-        ptxt = f"${price:.0f}" if price is not None else "n/a"
-        stock = "" if r.get("in_stock") is None else (" [in stock]" if r["in_stock"] else " [OOS]")
-        aisle = f"  @ {r['aisle']}" if r.get("aisle") else ""
-        print(f'{ptxt:>5} | {r["varietal"]:<22} | {(r["region"] or "-"):<24} | {r["name"]}{stock}{aisle}')
+        loc = r.get("location") or "-"
+        stk = r.get("stock")
+        stk_s = f"{stk} in stk" if stk is not None else ""
+        print(f'${r["price"]:>7.2f} | {r["varietal"]:<22} | {loc:<16} | {r["name"]}  {stk_s}')
         if a.urls:
-            print(f"        {r['url']}")
+            print(f'          {r["url"]}')
 
-    note = "price n/a = not yet enriched; confirm at shelf" if any(r.get("price") is None for r in shown) else ""
-    print(f"\n{len(shown)} shown / {len(rows)} matched. {note}")
+    print(f"\n{len(shown)} shown / {len(rows)} matched, in stock @ Total Wine Centennial #2302")
 
 
 if __name__ == "__main__":

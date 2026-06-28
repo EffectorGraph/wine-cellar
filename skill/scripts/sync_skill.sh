@@ -67,6 +67,20 @@ if [ -d "$BUYING_SRC" ]; then
 EOF
   echo "✓ wine-buying skill installed at $BUYING_DST"
 fi
+
+# ── Companion wine-inventory-refresh skill (refreshes the #2302 store stock index) ──
+REFRESH_SRC="$REPO_ROOT/wine-inventory-refresh"
+REFRESH_DST="$HOME/.claude/skills/wine-inventory-refresh"
+if [ -d "$REFRESH_SRC" ]; then
+  mkdir -p "$REFRESH_DST"
+  cp "$REFRESH_SRC/SKILL.md" "$REFRESH_DST/SKILL.md"
+  cat > "$REFRESH_DST/.local-config.json" <<EOF
+{
+  "repo_path": "$REPO_ROOT"
+}
+EOF
+  echo "✓ wine-inventory-refresh skill installed at $REFRESH_DST"
+fi
 echo ""
 echo "Next steps:"
 echo "  1. Restart your Claude session to pick up skill changes"

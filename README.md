@@ -12,6 +12,14 @@ The repo tracks a bottle from shelf to last glass, as a loop:
 
 Each verdict feeds the next shopping trip. Every row carries 34 fields: 31 objective facts + 3 subjective feedback fields (`status`, `verdict`, `impressions`).
 
+## Store inventory (Total Wine Centennial #2302)
+
+So shopping isn't slow guesswork, the repo keeps a **live local index of every in-stock wine over $20** at Total Wine #2302 — price, stock count, and shelf aisle per wine — in `inventory/totalwine-centennial.jsonl`. At the store, `inventory/query_inventory.py` filters it and prints only the matches (token-tight, no live scraping).
+
+- **Refresh at home** (never at the store): the **`wine-inventory-refresh`** skill, or `bash inventory/refresh_inventory.sh`. It drives a local browser past Total Wine's bot-wall, reads the store's listing data, reconciles against the existing index (only real changes are written), and commits the diff.
+- **Automate it:** `bash inventory/install_schedule.sh` once installs a **biweekly launchd job** that refreshes unattended in your login session.
+- How it works + troubleshooting: see `wine-inventory-refresh/SKILL.md` and the repo `CLAUDE.md`.
+
 ## What's in the repo
 
 | File | Role |
@@ -26,7 +34,12 @@ Each verdict feeds the next shopping trip. Every row carries 34 fields: 31 objec
 | `skill/scripts/update_wine.py` | Patches one existing row by wine+vintage (review + feedback). |
 | `skill/scripts/generate_view.py` | Rebuilds `cellar-view.html` from `cellar.jsonl`. |
 | `skill/scripts/test_backend.py` | Round-trip tests for append + update. |
-| `skill/scripts/sync_skill.sh` | Installs both skills into `~/.claude/skills/` and writes the per-user path config. |
+| `skill/scripts/sync_skill.sh` | Installs the three skills (`wine-cellar`, `wine-buying`, `wine-inventory-refresh`) into `~/.claude/skills/` and writes the per-user path config. |
+| `inventory/totalwine-centennial.jsonl` | Live in-stock >$20 store index for #2302 (price, stock, aisle). Built by `scan_store.py`. |
+| `inventory/scan_store.py` | Walks Total Wine's listing JSON via a local browser → reconciles the store index. |
+| `inventory/query_inventory.py` | Store-time filter over the index — prints only matches (token-tight). |
+| `inventory/refresh_inventory.sh` + `install_schedule.sh` | Refresh wrapper (pull→scan→commit/push) + biweekly launchd installer. |
+| `wine-inventory-refresh/SKILL.md` | The refresh skill: run the scan at home + troubleshooting. |
 | `.githooks/pre-commit` | Guards against invalid JSONL, bad `status`, stale view, behind-remote commits. |
 | `config.example.json` | Placeholder. The real per-user `.local-config.json` is written by `sync_skill.sh` and gitignored. |
 

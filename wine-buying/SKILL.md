@@ -19,8 +19,9 @@ Address the user as "Your Highness". Be concise — they're standing in a shop.
 The user is on a phone with a hard token cap; burning it means they buy nothing (this has happened — they came home with no wine). At the store:
 
 - **Query the LOCAL index with `inventory/query_inventory.py`** (it prints only matches — never read the raw `totalwine-centennial.jsonl` into context), then cross-ref `cellar.jsonl` + `preferences.json`. Recommend from those.
-  - e.g. `python3 inventory/query_inventory.py --varietal cabernet --region napa --max-price 60 --limit 10`
-  - filters: `--varietal --type --region --text --min-price --max-price --priced-only --limit`. Price shows `n/a` until the catalog is price-enriched at home — recommend by name/varietal/region and confirm the shelf tag.
+  - e.g. `python3 inventory/query_inventory.py --varietal cabernet --region napa --max-price 60 --sort stock --limit 10`
+  - filters: `--varietal --type --region --text --min-price --max-price --min-stock --sort {price,stock,name} --limit`. The index is **in-stock wines over $20 at #2302** with real price, live stock count, and shelf aisle (`location`) — so you can tell the user exactly what's there, the price, and where to grab it. (Wines ≤$20 aren't indexed; if they ask for cheap bottles, say so and go on general knowledge.)
+  - If the index looks stale (old `scraped_date`), it still reflects the last home refresh; recommend from it and note it may be a refresh behind. Refresh happens at HOME via the `wine-inventory-refresh` skill, never live.
 - **NO live web scraping/research. NO subagent fan-out. NO multi-image upload marathons.**
 - If the index is missing/stale, recommend from the cellar + knowledge and say it's unverified — do **not** scrape live.
 
