@@ -1,4 +1,4 @@
-# Wine Cellar — repo guide for Claude
+# Wine Cellar — repo guide for Codex
 
 Two skills: `wine-cellar` (own / review / drink) and `wine-buying` (shop). Data = JSONL + git. See README.md.
 
@@ -22,7 +22,6 @@ Total Wine store #2302 (9505 E County Line Rd, Centennial). One live index, refr
   - **Why the listing JSON, not static fetch:** totalwine.com listing/product pages sit behind PerimeterX and 403 every static fetch; price/stock are JS-hydrated. nodriver renders the real page (real Mac + home IP = the easy case) and reads `INITIAL_STATE`. pageSize caps at 200.
 - **Refresh = the `wine-inventory-refresh` skill** (or `bash inventory/refresh_inventory.sh`): pull → scan → commit/push the diff. A **biweekly launchd job** (`inventory/install_schedule.sh`, run once to activate) does it unattended. Troubleshooting lives in that skill.
 - If the scan breaks (site shape changed), fix `scan_store.py` **at home** — never fall back to live agent research in the aisle.
-- **Reference: `inventory/SCHEMA.md`** — the row schema (field-by-field), the `INITIAL_STATE` data path, endpoint/pageSize/pagination, in-stock & price logic, facets, the PerimeterX context, and the sitemap fallback. Read it before touching `scan_store.py`.
 
 ## Token discipline generally
 

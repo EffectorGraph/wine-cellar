@@ -37,6 +37,7 @@ So shopping isn't slow guesswork, the repo keeps a **live local index of every i
 | `skill/scripts/sync_skill.sh` | Installs the three skills (`wine-cellar`, `wine-buying`, `wine-inventory-refresh`) into `~/.claude/skills/` and writes the per-user path config. |
 | `inventory/totalwine-centennial.jsonl` | Live in-stock >$20 store index for #2302 (price, stock, aisle). Built by `scan_store.py`. |
 | `inventory/scan_store.py` | Walks Total Wine's listing JSON via a local browser → reconciles the store index. |
+| `inventory/SCHEMA.md` | **Reference**: row schema + scraping internals (data path, endpoint, in-stock/price logic, gotchas). Read before editing the scanner. |
 | `inventory/query_inventory.py` | Store-time filter over the index — prints only matches (token-tight). |
 | `inventory/refresh_inventory.sh` + `install_schedule.sh` | Refresh wrapper (pull→scan→commit/push) + biweekly launchd installer. |
 | `wine-inventory-refresh/SKILL.md` | The refresh skill: run the scan at home + troubleshooting. |
