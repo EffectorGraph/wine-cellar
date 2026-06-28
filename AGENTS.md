@@ -9,7 +9,7 @@ At the store the user is on a phone with a hard token cap. Blow the budget → t
 - **NO live web scraping/research.** None.
 - **NO subagent fan-out.** No spawning agents. Never agents that can spawn agents.
 - **NO photo-by-photo upload marathons** as the primary path — too slow on store wifi.
-- **DO:** query the local index with `query_inventory.py` (it prints only matches — never read the raw JSONL into context), cross-ref `cellar.jsonl` + `preferences.json`, match to taste, recommend. Done.
+- **DO:** `git pull --ff-only` first (grabs the latest refresh — the biweekly job commits fresh inventory), then query the local index with `query_inventory.py` (it prints only matches — never read the raw JSONL into context), cross-ref `cellar.jsonl` + `preferences.json`, match to taste, recommend. Done.
   - e.g. `python3 inventory/query_inventory.py --varietal cabernet --region napa --max-price 60 --limit 10`
 - If the index is missing/stale: recommend from the cellar + general knowledge, say it's unverified, and **still do not scrape live.**
 
@@ -22,6 +22,7 @@ Total Wine store #2302 (9505 E County Line Rd, Centennial). One live index, refr
   - **Why the listing JSON, not static fetch:** totalwine.com listing/product pages sit behind PerimeterX and 403 every static fetch; price/stock are JS-hydrated. nodriver renders the real page (real Mac + home IP = the easy case) and reads `INITIAL_STATE`. pageSize caps at 200.
 - **Refresh = the `wine-inventory-refresh` skill** (or `bash inventory/refresh_inventory.sh`): pull → scan → commit/push the diff. A **biweekly launchd job** (`inventory/install_schedule.sh`, run once to activate) does it unattended. Troubleshooting lives in that skill.
 - If the scan breaks (site shape changed), fix `scan_store.py` **at home** — never fall back to live agent research in the aisle.
+- **Reference: `inventory/SCHEMA.md`** — the row schema (field-by-field), the `INITIAL_STATE` data path, endpoint/pageSize/pagination, in-stock & price logic, facets, the PerimeterX context, and the sitemap fallback. Read it before touching `scan_store.py`.
 
 ## Token discipline generally
 
