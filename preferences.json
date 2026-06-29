@@ -1,6 +1,8 @@
 {
   "_comment": "Living taste profile for the wine-buying skill. Grows as verdicts get logged in cellar.jsonl. likes/dislikes are style-level signals; benchmarks are named reference bottles; notes is free-text. Edit by hand or let the buying/feedback skills append.",
-  "likes": [],
+  "likes": [
+    "Whites with real body and weight — thick, creamy, concrete-aged-feeling texture is the main draw. Bright acid is a welcome plus but not a requirement."
+  ],
   "dislikes": [],
   "benchmarks": [],
   "notes": ""
