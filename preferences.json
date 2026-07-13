@@ -1,7 +1,11 @@
 {
   "_comment": "Living taste profile for the wine-buying skill. Grows as verdicts get logged in cellar.jsonl. likes/dislikes are style-level signals; benchmarks are named reference bottles; notes is free-text. Edit by hand or let the buying/feedback skills append.",
-  "likes": [],
-  "dislikes": [],
+  "likes": [
+    "Plush, fruit-forward Right Bank Merlot (velvety black cherry/plum, cocoa, easy roundness) — tasty and crowd-friendly"
+  ],
+  "dislikes": [
+    "True-bitter / 'bitter-almond' finish of the limestone Right Bank (St-Emilion, Lalande-de-Pomerol, Fronsac, Castillon) — reads as jarring, NOT the same as drying tannin/astringency. Especially disjointed when it sits over a lighter mid-palate/body."
+  ],
   "benchmarks": [],
-  "notes": ""
+  "notes": "Sensitive to genuine bitterness on the finish (a taste, distinct from tannic astringency), which is a limestone Right Bank signature amplified by Cabernet Franc. For Right Bank picks, favor clay/gravel/iron terroir (Pomerol) over limestone-plateau St-Emilion/satellite appellations, and favor bottles with enough mid-palate weight to carry the finish. First logged verdict: Chateau Garraud 2019 Lalande-de-Pomerol = 'like' (tasty overall, but bitter-almond/lighter-body disjoint)."
 }
