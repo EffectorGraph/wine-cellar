@@ -62,12 +62,12 @@ The feedback layer is ported from the green-tea-log model: a categorical `status
 | 24 | `cases_produced` | int/null | 750ml-equivalent cases. |
 | 25 | `release_date` | str/null | ISO date or month/year. |
 | 26 | `drink_from` | int | Earliest year at plateau. |
-| 27 | `cellared_under` | int/null | User's target year to open this bottle. **User supplies this** — do not guess. `null` while a bottle is `pending` (staged at the store, not yet reviewed); filled at review time. |
+| 27 | `cellared_under` | int/null | User's target year to open this bottle. **User supplies this** — do not guess. `null` while a bottle is `pending` (bought, but the user hasn't picked a year yet); filled at review time. |
 | 28 | `drink_by` | int | Latest year before decline. |
 | 29 | `opened_on` | str/null | ISO date actually opened. Blank while cellared. Cellared Under = *intent*, Opened On = *actual*. |
 | 30 | `tasting_notes` | str/null | **STRICT.** Vintage-specific producer/critic notes only. Blank if no vintage-specific note exists. Do NOT generalize from grape/region/adjacent vintage. |
 | 31 | `fallback_tasting_notes` | str/null | **LOOSER.** Used only when `tasting_notes` is blank. Cross-vintage, adjacent-vintage, house-style notes — always prefixed with context (`"Cross-vintage:"`, `"2022 vintage:"`, `"House style:"`). |
-| 32 | `status` | enum | Lifecycle + verdict in one field: `pending` (staged at store, awaiting review) → `cellared` (reviewed, target year set, not yet drunk) → on drinking, one shared verdict: `love` / `like` / `meh` / `pass`. Default on plain entry: `cellared`. |
+| 32 | `status` | enum | Lifecycle + verdict in one field. **Every row is a bottle the user owns — `status` is post-purchase state, never whether they bought it.** `pending` (bought & home, awaiting review — user hasn't set `cellared_under` yet; short for *pending review*, NOT "in the store"/"not yet bought") → `cellared` (reviewed, target year set, not yet drunk) → on drinking, one shared verdict: `love` / `like` / `meh` / `pass`. Default on plain entry: `cellared`. |
 | 33 | `verdict` | str/null | The shared, plain-spoken summary judgment (one or two sentences). Rendered italic in the view. Blank until drunk. This is **your** voice, not a critic's — keep `tasting_notes`/`fallback` for sourced notes. |
 | 34 | `impressions` | array | Evolving log of how it actually drank: `[{"date": "2026-06-26", "note": "..."}]`. Append-only — first pour, after it opens up, last glass, next-day recork. Empty `[]` until drunk. |
 
@@ -90,6 +90,8 @@ The feedback layer is ported from the green-tea-log model: a categorical `status
 ## Review staged bottles
 
 When the user says "review my pending bottles" / "let's finish logging the store run", they're filling in the **opinion** field the wine-buying skill left blank: `cellared_under` (their target open year). The research is already done — these rows are complete except for that.
+
+**These bottles are already bought and sitting in the cellar.** Reviewing them is bookkeeping, not a purchase decision — don't imply the user still needs to acquire them, and prefer plain phrasing ("bottles that still need an opening year") over the word "pending" when talking to the user.
 
 1. **Find pending rows.** Read `cellar.jsonl`; list every row with `status: "pending"`. For each, show the small report (winery · vintage · grapes · region · suggested drink window from `drink_from`/`drink_by`).
 2. **Ask for `cellared_under`** per bottle (target year to open). One question per bottle, or batch them.

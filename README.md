@@ -6,8 +6,10 @@ A shared wine-cellar database for the Wilterson household. Data lives as JSONL, 
 
 The repo tracks a bottle from shelf to last glass, as a loop:
 
-1. **Buy** — at the store, the **`wine-buying`** skill reads shelf photos, recommends what to grab based on what you've loved/passed (`cellar.jsonl` verdicts + `preferences.json`), and stages each purchase as a `pending` row.
+1. **Buy** — at the store, the **`wine-buying`** skill reads shelf photos, recommends what to grab based on what you've loved/passed (`cellar.jsonl` verdicts + `preferences.json`), and — once you've **actually bought** them — logs each purchase as a `pending` row. Bottles you looked at and passed on never enter the file.
 2. **Review** — the **`wine-cellar`** skill surfaces `pending` bottles so you set a target opening year; they flip to `cellared`.
+
+> **`pending` = *pending review*, not "pending purchase".** Every row in `cellar.jsonl` is a bottle you already own and have in hand; `pending` only means you haven't picked its target opening year (`cellared_under`) yet.
 3. **Drink** — when you open one, `wine-cellar` shows how it was made and captures your **verdict** + an evolving **impressions** log (`love`/`like`/`meh`/`pass`).
 
 Each verdict feeds the next shopping trip. Every row carries 34 fields: 31 objective facts + 3 subjective feedback fields (`status`, `verdict`, `impressions`).

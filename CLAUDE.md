@@ -2,6 +2,22 @@
 
 Two skills: `wine-cellar` (own / review / drink) and `wine-buying` (shop). Data = JSONL + git. See README.md.
 
+## `status` — READ THIS BEFORE INTERPRETING ANY ROW
+
+**Every row in `cellar.jsonl` is a bottle the user OWNS.** The file is not a wishlist, a shortlist, or a shopping cart. Wines under consideration at a store are never written to it — they live only in the chat until the user says what they actually bought.
+
+`status` tracks **where a bottle is in its life after purchase**, not whether it was purchased:
+
+| `status` | Means | Owned? |
+|---|---|---|
+| `pending` | Bought & home. Everything researched **except** `cellared_under` — the user hasn't picked its target opening year yet. Purely a bookkeeping to-do. | **YES** |
+| `cellared` | Bought, reviewed, target year set. Lying down, not yet opened. | **YES** |
+| `love` / `like` / `meh` / `pass` | Bought, opened, drunk, verdict recorded. | **YES** (or was) |
+
+**`pending` does NOT mean "in the store", "not yet bought", "considering", or "on hold".** The name is legacy and reads misleadingly — a model has already misread it this way. It is short for *pending review*, and the only thing pending is the user setting `cellared_under`. Never tell the user a `pending` bottle isn't theirs, and never re-recommend one as something to go buy — they already own it.
+
+Talk about them in plain language: "10 bottles still need an opening year set", not "you have 10 pending bottles."
+
 ## STORE SESSIONS = TIGHT (hard token-budget rule)
 
 At the store the user is on a phone with a hard token cap. Blow the budget → they buy nothing (this has happened — came home empty-handed). NON-NEGOTIABLE when shopping live:

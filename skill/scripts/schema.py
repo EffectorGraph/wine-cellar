@@ -36,15 +36,19 @@ CANONICAL_KEYS = OBJECTIVE_KEYS + FEEDBACK_KEYS
 # ─────────────────────────────────────────────────────────────────────
 # Type rules.
 #   cellared_under is the user's target open year — optional now, because
-#   bottles staged at the store ("pending") don't have it until review.
+#   a just-purchased bottle ("pending") doesn't have one until the user
+#   reviews it and picks a year.
 # ─────────────────────────────────────────────────────────────────────
 REQUIRED_INTS = ("vintage", "drink_from", "drink_by")
 OPTIONAL_INTS = ("whole_bunch_pct", "new_oak_pct", "cases_produced", "cellared_under")
 OPTIONAL_FLOATS = ("abv", "ph", "ta", "residual_sugar")
 
-# status lifecycle: pending (staged, awaiting review) → cellared (reviewed,
-# target year set, not yet drunk) → a verdict once drunk. Mirrors the
-# green-tea love/maybe/reject vocabulary.
+# status lifecycle — EVERY row is a bottle the user already owns; status is
+# post-purchase state, never "did they buy it".
+#   pending  = bought & home, awaiting review (user hasn't set cellared_under).
+#              NOT "in the store" / "not yet bought" — short for PENDING REVIEW.
+#   cellared = bought, reviewed, target year set, not yet drunk.
+#   love/like/meh/pass = drunk, verdict recorded (green-tea vocabulary).
 ALLOWED_STATUS = ("pending", "cellared", "love", "like", "meh", "pass")
 
 FEEDBACK_DEFAULTS = {

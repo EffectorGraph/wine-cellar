@@ -61,7 +61,7 @@ WIDE_KEYS = {"verdict", "impressions", "tasting_notes", "fallback_tasting_notes"
 
 # Human labels for the status vocabulary.
 STATUS_LABELS = {
-    "pending": "⏳ Pending",
+    "pending": "⏳ Needs year",
     "cellared": "Cellared",
     "love": "♥ Love",
     "like": "Like",
@@ -350,7 +350,7 @@ def main() -> int:
     <h1>Wine Cellar</h1>
     <div class="stats">
       <span><strong>{total_rows}</strong> bottles</span>
-      <span class="pending-stat" id="pendingStat" title="Click to show only bottles awaiting your review"><strong>{pending}</strong> pending review</span>
+      <span class="pending-stat" id="pendingStat" title="Owned bottles with no target opening year set yet. Click to show only these."><strong>{pending}</strong> need an opening year</span>
       <span><strong>{opened_rows}</strong> opened</span>
       <span>Rated: {rated_html}</span>
       <span>Vintages: <strong>{escape(vintage_range)}</strong></span>
@@ -369,7 +369,7 @@ def main() -> int:
   </div>
   <footer>
     Auto-generated from <code>cellar.jsonl</code> by <code>skill/scripts/generate_view.py</code>.
-    Click a column header to sort. Amber rows are pending your review. Opened bottles are italic.
+    Click a column header to sort. Every row is a bottle you own; amber rows just need a target opening year. Opened bottles are italic.
   </footer>
 <script>
 (() => {{

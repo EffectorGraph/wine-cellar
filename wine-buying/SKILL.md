@@ -54,7 +54,8 @@ The run is **not finished** until what they bought is researched and logged. Whe
 
 1. **Confirm the list** — wine + vintage for each. Resolve any ambiguity now (vintage on the bottle, which bottling).
 2. **Research each** like a normal cellar entry — producer tech sheet first, then critics, per the wine-cellar research discipline. Fill the objective fields and propose a drink window (`drink_from`/`drink_by`).
-3. **Stage each as `pending`** via `append_wine.py` — status `pending`, `cellared_under` null (the user sets their target year at review time), feedback fields empty:
+3. **Stage each as `pending`** via `append_wine.py` — status `pending`, `cellared_under` null (the user sets their target year at review time), feedback fields empty.
+   **Only bottles the user actually bought go in `cellar.jsonl`** — candidates you recommended but they passed on are never written. `pending` here means *pending review*, i.e. bought and home but no opening year picked yet; it does **not** mean "still at the store":
    ```bash
    python3 skill/scripts/append_wine.py <<'JSON'
    { ...31 objective fields, cellared_under: null...,
