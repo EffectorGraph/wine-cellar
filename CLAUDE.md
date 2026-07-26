@@ -12,7 +12,9 @@ Two skills: `wine-cellar` (own / review / drink) and `wine-buying` (shop). Data 
 |---|---|---|
 | `pending` | Bought & home. Everything researched **except** `cellared_under` — the user hasn't picked its target opening year yet. Purely a bookkeeping to-do. | **YES** |
 | `cellared` | Bought, reviewed, target year set. Lying down, not yet opened. | **YES** |
-| `love` / `like` / `meh` / `pass` | Bought, opened, drunk, verdict recorded. | **YES** (or was) |
+| `love` / `like` / `meh` / `pass` | Opened, drunk, verdict recorded. | **YES** (or was) |
+
+A drunk row doesn't have to have passed through the cellar — a bottle ordered at a restaurant gets logged straight to a verdict (`cellared_under` stays null, it never had a target year). What every row shares is that the user **drank it or has it**, never that they merely considered it.
 
 **`pending` does NOT mean "in the store", "not yet bought", "considering", or "on hold".** The name is legacy and reads misleadingly — a model has already misread it this way. It is short for *pending review*, and the only thing pending is the user setting `cellared_under`. Never tell the user a `pending` bottle isn't theirs, and never re-recommend one as something to go buy — they already own it.
 
