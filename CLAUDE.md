@@ -1,10 +1,12 @@
+<!-- agent-sync:slot id="migration-001" audience="claude" -->
 # Wine Cellar — repo guide for Claude
+<!-- agent-sync:end -->
 
-Two skills: `wine-cellar` (own / review / drink) and `wine-buying` (shop). Data = JSONL + git. See README.md.
+Four skills: `wine-cellar` (own / review / drink), `wine-buying` (shop), `wine-tonight-recommendation` (choose), and `wine-inventory-refresh` (refresh store index). Data = JSONL + git. See README.md.
 
 ## `status` — READ THIS BEFORE INTERPRETING ANY ROW
 
-**Every row in `cellar.jsonl` is a bottle the user OWNS.** The file is not a wishlist, a shortlist, or a shopping cart. Wines under consideration at a store are never written to it — they live only in the chat until the user says what they actually bought.
+**Every unopened `pending` or `cellared` row in `cellar.jsonl` is a bottle the user OWNS.** Verdict rows may also represent bottles drunk outside the cellar. The file is not a wishlist, a shortlist, or a shopping cart. Wines under consideration at a store are never written to it — they live only in the chat until the user says what they actually bought.
 
 `status` tracks **where a bottle is in its life after purchase**, not whether it was purchased:
 

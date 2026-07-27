@@ -1,6 +1,8 @@
+<!-- agent-sync:slot id="migration-001" audience="codex" -->
 # Wine Cellar — repo guide for Codex
+<!-- agent-sync:end -->
 
-Two skills: `wine-cellar` (own / review / drink) and `wine-buying` (shop). Data = JSONL + git. See README.md.
+Four skills: `wine-cellar` (own / review / drink), `wine-buying` (shop), `wine-tonight-recommendation` (choose), and `wine-inventory-refresh` (refresh store index). Data = JSONL + git. See README.md.
 
 ## STORE SESSIONS = TIGHT (hard token-budget rule)
 

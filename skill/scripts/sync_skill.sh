@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# sync_skill.sh — install the wine-cellar skill into the current user's ~/.claude/skills/wine-cellar/
-# and write a .local-config.json pointing at this repo.
+# sync_skill.sh — install the wine skills for Codex and Claude, then point them at this repo.
 #
 # Run this once after cloning, and again after any `git pull` that touches skill files.
 # Works for any user — path discovery is based on git rev-parse.
@@ -13,75 +12,62 @@ if ! REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)"; then
   exit 1
 fi
 
-SKILL_SRC="$REPO_ROOT/skill"
-SKILL_DST="$HOME/.claude/skills/wine-cellar"
+WINE_CELLAR_SRC="$REPO_ROOT/skill"
+INSTALL_ROOTS=("$HOME/.agents/skills" "$HOME/.claude/skills")
+COMPANION_SKILLS=("wine-buying" "wine-inventory-refresh" "wine-tonight-recommendation")
 
-if [ ! -d "$SKILL_SRC" ]; then
-  echo "ERROR: $SKILL_SRC does not exist. Are you in the wine-cellar repo?" >&2
+if [ ! -d "$WINE_CELLAR_SRC" ]; then
+  echo "ERROR: $WINE_CELLAR_SRC does not exist. Are you in the wine-cellar repo?" >&2
   exit 1
 fi
 
-# Create destination + scripts subdir
-mkdir -p "$SKILL_DST/scripts"
+write_config() {
+  local skill_dst="$1"
+  printf '{\n  "repo_path": "%s"\n}\n' "$REPO_ROOT" > "$skill_dst/.local-config.json"
+}
 
-# Copy skill files
-cp "$SKILL_SRC/SKILL.md" "$SKILL_DST/SKILL.md"
-cp "$SKILL_SRC/scripts/schema.py" "$SKILL_DST/scripts/schema.py"
-cp "$SKILL_SRC/scripts/append_wine.py" "$SKILL_DST/scripts/append_wine.py"
-cp "$SKILL_SRC/scripts/update_wine.py" "$SKILL_DST/scripts/update_wine.py"
-cp "$SKILL_SRC/scripts/generate_view.py" "$SKILL_DST/scripts/generate_view.py"
-cp "$SKILL_SRC/scripts/test_backend.py" "$SKILL_DST/scripts/test_backend.py"
-cp "$SKILL_SRC/scripts/sync_skill.sh" "$SKILL_DST/scripts/sync_skill.sh"
-chmod +x "$SKILL_DST/scripts/"*.py "$SKILL_DST/scripts/sync_skill.sh"
+install_wine_cellar() {
+  local install_root="$1"
+  local skill_dst="$install_root/wine-cellar"
 
-# Remove any obsolete xlsx-era scripts that might still be in the destination
-for obsolete in fix_widths.py; do
-  if [ -f "$SKILL_DST/scripts/$obsolete" ]; then
-    echo "  Removing obsolete: $SKILL_DST/scripts/$obsolete"
-    rm "$SKILL_DST/scripts/$obsolete"
+  mkdir -p "$skill_dst/scripts"
+  cp "$WINE_CELLAR_SRC/SKILL.md" "$skill_dst/SKILL.md"
+  cp "$WINE_CELLAR_SRC/scripts/schema.py" "$skill_dst/scripts/schema.py"
+  cp "$WINE_CELLAR_SRC/scripts/append_wine.py" "$skill_dst/scripts/append_wine.py"
+  cp "$WINE_CELLAR_SRC/scripts/update_wine.py" "$skill_dst/scripts/update_wine.py"
+  cp "$WINE_CELLAR_SRC/scripts/generate_view.py" "$skill_dst/scripts/generate_view.py"
+  cp "$WINE_CELLAR_SRC/scripts/test_backend.py" "$skill_dst/scripts/test_backend.py"
+  cp "$WINE_CELLAR_SRC/scripts/sync_skill.sh" "$skill_dst/scripts/sync_skill.sh"
+  chmod +x "$skill_dst/scripts/"*.py "$skill_dst/scripts/sync_skill.sh"
+  write_config "$skill_dst"
+  echo "✓ wine-cellar installed at $skill_dst"
+}
+
+install_companion() {
+  local install_root="$1"
+  local skill_name="$2"
+  local skill_src="$REPO_ROOT/$skill_name"
+  local skill_dst="$install_root/$skill_name"
+
+  if [ ! -d "$skill_src" ]; then
+    echo "ERROR: companion skill source missing: $skill_src" >&2
+    exit 1
   fi
+
+  mkdir -p "$skill_dst"
+  cp -R "$skill_src/." "$skill_dst/"
+  write_config "$skill_dst"
+  echo "✓ $skill_name installed at $skill_dst"
+}
+
+for install_root in "${INSTALL_ROOTS[@]}"; do
+  install_wine_cellar "$install_root"
+  for skill_name in "${COMPANION_SKILLS[@]}"; do
+    install_companion "$install_root" "$skill_name"
+  done
 done
 
-# Write local config — points the Python scripts at this repo's cellar.jsonl
-CONFIG_PATH="$SKILL_DST/.local-config.json"
-cat > "$CONFIG_PATH" <<EOF
-{
-  "repo_path": "$REPO_ROOT"
-}
-EOF
-
-echo "✓ Skill installed at $SKILL_DST"
-echo "✓ Config written: $CONFIG_PATH"
-echo "  repo_path → $REPO_ROOT"
-
-# ── Companion wine-buying skill (shares this repo's cellar + backend scripts) ──
-BUYING_SRC="$REPO_ROOT/wine-buying"
-BUYING_DST="$HOME/.claude/skills/wine-buying"
-if [ -d "$BUYING_SRC" ]; then
-  mkdir -p "$BUYING_DST"
-  cp "$BUYING_SRC/SKILL.md" "$BUYING_DST/SKILL.md"
-  cat > "$BUYING_DST/.local-config.json" <<EOF
-{
-  "repo_path": "$REPO_ROOT"
-}
-EOF
-  echo "✓ wine-buying skill installed at $BUYING_DST"
-fi
-
-# ── Companion wine-inventory-refresh skill (refreshes the #2302 store stock index) ──
-REFRESH_SRC="$REPO_ROOT/wine-inventory-refresh"
-REFRESH_DST="$HOME/.claude/skills/wine-inventory-refresh"
-if [ -d "$REFRESH_SRC" ]; then
-  mkdir -p "$REFRESH_DST"
-  cp "$REFRESH_SRC/SKILL.md" "$REFRESH_DST/SKILL.md"
-  cat > "$REFRESH_DST/.local-config.json" <<EOF
-{
-  "repo_path": "$REPO_ROOT"
-}
-EOF
-  echo "✓ wine-inventory-refresh skill installed at $REFRESH_DST"
-fi
-echo ""
+echo
 echo "Next steps:"
-echo "  1. Restart your Claude session to pick up skill changes"
+echo "  1. Restart your Codex and Claude sessions to pick up skill changes"
 echo "  2. (First-time setup only) cd $REPO_ROOT && git config core.hooksPath .githooks"

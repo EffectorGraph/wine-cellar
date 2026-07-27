@@ -1,0 +1,4 @@
+interface:
+  display_name: "Wine Tonight"
+  short_description: "Rank owned wines for tonight in a rich table"
+  default_prompt: "Use $wine-tonight-recommendation to rank the best bottles from my cellar to open tonight."

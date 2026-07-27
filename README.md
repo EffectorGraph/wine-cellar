@@ -1,6 +1,6 @@
 # Wine Cellar
 
-A shared wine-cellar database for the Wilterson household. Data lives as JSONL, with an auto-generated HTML view for browsing. Editing happens primarily via Claude Code using two bundled skills.
+A shared wine-cellar database for the Wilterson household. Data lives as JSONL, with an auto-generated HTML view for browsing. Codex and Claude share four bundled skills for buying, managing, choosing, and refreshing wine.
 
 ## The bottle lifecycle
 
@@ -9,8 +9,9 @@ The repo tracks a bottle from shelf to last glass, as a loop:
 1. **Buy** — at the store, the **`wine-buying`** skill reads shelf photos, recommends what to grab based on what you've loved/passed (`cellar.jsonl` verdicts + `preferences.json`), and — once you've **actually bought** them — logs each purchase as a `pending` row. Bottles you looked at and passed on never enter the file.
 2. **Review** — the **`wine-cellar`** skill surfaces `pending` bottles so you set a target opening year; they flip to `cellared`.
 
-> **`pending` = *pending review*, not "pending purchase".** Every row in `cellar.jsonl` is a bottle you already own and have in hand; `pending` only means you haven't picked its target opening year (`cellared_under`) yet.
-3. **Drink** — when you open one, `wine-cellar` shows how it was made and captures your **verdict** + an evolving **impressions** log (`love`/`like`/`meh`/`pass`).
+> **`pending` = *pending review*, not "pending purchase".** Every unopened `pending` or `cellared` row is a bottle you own and have in hand; `pending` only means you haven't picked its target opening year (`cellared_under`) yet. Verdict rows can also record bottles drunk at restaurants that were never cellared.
+3. **Choose** — the **`wine-tonight-recommendation`** skill ranks the relevant unopened bottles for the occasion, fills research gaps, adds price context, and preserves the detailed recommendation table.
+4. **Drink** — when you open one, `wine-cellar` shows how it was made and captures your **verdict** + an evolving **impressions** log (`love`/`like`/`meh`/`pass`).
 
 Each verdict feeds the next shopping trip. Every row carries 34 fields: 31 objective facts + 3 subjective feedback fields (`status`, `verdict`, `impressions`).
 
@@ -31,12 +32,13 @@ So shopping isn't slow guesswork, the repo keeps a **live local index of every i
 | `preferences.json` | Living likes / dislikes / benchmarks taste profile. Read by `wine-buying` to drive recommendations; grows as verdicts land. |
 | `skill/SKILL.md` | The `wine-cellar` skill: entry, review of pending bottles, drink feedback. |
 | `wine-buying/SKILL.md` | The `wine-buying` skill: shelf photos → recommend → stage purchases. Shares this repo's backend. |
+| `wine-tonight-recommendation/SKILL.md` | The `wine-tonight-recommendation` skill: rank owned bottles for tonight with price, composition, character, readiness, and service. |
 | `skill/scripts/schema.py` | Single source of truth for field order + validation. Imported by the other scripts and the pre-commit hook. |
 | `skill/scripts/append_wine.py` | Appends one row of JSONL. |
 | `skill/scripts/update_wine.py` | Patches one existing row by wine+vintage (review + feedback). |
 | `skill/scripts/generate_view.py` | Rebuilds `cellar-view.html` from `cellar.jsonl`. |
 | `skill/scripts/test_backend.py` | Round-trip tests for append + update. |
-| `skill/scripts/sync_skill.sh` | Installs the three skills (`wine-cellar`, `wine-buying`, `wine-inventory-refresh`) into `~/.claude/skills/` and writes the per-user path config. |
+| `skill/scripts/sync_skill.sh` | Installs all four skills into Codex (`~/.agents/skills/`) and Claude (`~/.claude/skills/`) and writes the per-user path config. |
 | `inventory/totalwine-centennial.jsonl` | Live in-stock >$20 store index for #2302 (price, stock, aisle). Built by `scan_store.py`. |
 | `inventory/scan_store.py` | Walks Total Wine's listing JSON via a local browser → reconciles the store index. |
 | `inventory/SCHEMA.md` | **Reference**: row schema + scraping internals (data path, endpoint, in-stock/price logic, gotchas). Read before editing the scanner. |
@@ -48,9 +50,9 @@ So shopping isn't slow guesswork, the repo keeps a **live local index of every i
 
 ## Sarah's setup — already done
 
-Claude set up the local environment:
+The local environment is set up:
 - Repo cloned to `~/repos/databases/wine-cellar/`
-- Skill installed into `~/.claude/skills/wine-cellar/` via `sync_skill.sh`
+- All four skills installed for Codex and Claude via `sync_skill.sh`
 - `.local-config.json` written with the local repo path
 - Git hooks enabled (`git config core.hooksPath .githooks`)
 
@@ -80,13 +82,13 @@ git clone https://github.com/EffectorGraph/wine-cellar.git
 cd wine-cellar
 ```
 
-### 4. Install the skill
+### 4. Install the skills
 
 ```bash
 bash skill/scripts/sync_skill.sh
 ```
 
-This copies the skill files into `~/.claude/skills/wine-cellar/` and writes a `.local-config.json` telling the scripts where your clone lives.
+This installs all four skills into `~/.agents/skills/` for Codex and `~/.claude/skills/` for Claude, then writes a `.local-config.json` telling each installation where your clone lives.
 
 ### 5. Enable the safety hooks
 
@@ -96,9 +98,9 @@ git config core.hooksPath .githooks
 
 This enables the pre-commit hook that catches invalid JSONL, stale HTML view, and behind-remote commits.
 
-### 6. Restart Claude Code
+### 6. Restart Codex or Claude
 
-Close and reopen your Claude session. The skill will pick up the new config on restart.
+Close and reopen the client you use. The skills will pick up the new config on restart.
 
 ### 7. Try it
 
@@ -110,7 +112,7 @@ Say "add a wine to the cellar" followed by any wine name and vintage. The skill 
 
 ## Daily workflow
 
-### Via Claude (primary)
+### Via Codex or Claude (primary)
 
 Just say "add <wine name> <vintage>" or "cellar this: <...>". The skill handles research, writing, and git sync. Say "no preference for cellared year, pick one inside the window" if you don't care about the opening-year target.
 
