@@ -21,7 +21,7 @@ sys.path.insert(0, os.path.join(sys.argv[2], "skill", "scripts"))
 try:
     from schema import ALLOWED_STATUS
 except Exception:
-    ALLOWED_STATUS = ("pending", "cellared", "love", "like", "meh", "pass")
+    ALLOWED_STATUS = ("pending", "cellared", "opened", "love", "like", "meh", "pass")
 errors = []
 with open(path, encoding="utf-8") as f:
     for i, line in enumerate(f, start=1):

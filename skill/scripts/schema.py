@@ -48,8 +48,9 @@ OPTIONAL_FLOATS = ("abv", "ph", "ta", "residual_sugar")
 #   pending  = bought & home, awaiting review (user hasn't set cellared_under).
 #              NOT "in the store" / "not yet bought" — short for PENDING REVIEW.
 #   cellared = bought, reviewed, target year set, not yet drunk.
+#   opened  = opened, awaiting the user's tasting verdict.
 #   love/like/meh/pass = drunk, verdict recorded (green-tea vocabulary).
-ALLOWED_STATUS = ("pending", "cellared", "love", "like", "meh", "pass")
+ALLOWED_STATUS = ("pending", "cellared", "opened", "love", "like", "meh", "pass")
 
 FEEDBACK_DEFAULTS = {
     "status": "cellared",

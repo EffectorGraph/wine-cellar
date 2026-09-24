@@ -11,7 +11,7 @@ The repo tracks a bottle from shelf to last glass, as a loop:
 
 > **`pending` = *pending review*, not "pending purchase".** Every unopened `pending` or `cellared` row is a bottle you own and have in hand; `pending` only means you haven't picked its target opening year (`cellared_under`) yet. Verdict rows can also record bottles drunk at restaurants that were never cellared.
 3. **Choose** — the **`wine-tonight-recommendation`** skill ranks the relevant unopened bottles for the occasion, fills research gaps, adds price context, and preserves the detailed recommendation table.
-4. **Drink** — when you open one, `wine-cellar` shows how it was made and captures your **verdict** + an evolving **impressions** log (`love`/`like`/`meh`/`pass`).
+4. **Drink** — when you open one, `wine-cellar` records `opened` while your verdict is still forming, then captures your **verdict** + an evolving **impressions** log (`love`/`like`/`meh`/`pass`).
 
 Each verdict feeds the next shopping trip. Every row carries 34 fields: 31 objective facts + 3 subjective feedback fields (`status`, `verdict`, `impressions`).
 

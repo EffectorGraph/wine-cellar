@@ -91,7 +91,18 @@ def main():
         all_ok &= check("update: key order preserved",
                         list(row.keys()) == CANONICAL_KEYS, list(row.keys()))
 
-        # 4. Update: append an impression + set verdict + verdict status (drink flow).
+        # 4. Opening without feedback records the date without assigning a verdict.
+        rc, out, err = run(UPDATE, {
+            "match": {"wine": "Test Bottle Reserve", "vintage": 2021},
+            "set": {"status": "opened", "opened_on": "2026-06-26"},
+        }, cellar)
+        row = last_row(cellar)
+        all_ok &= check("update: opened before tasting -> rc 0", rc == 0, err)
+        all_ok &= check("update: opening has no verdict or impressions",
+                        row.get("status") == "opened" and row.get("opened_on") == "2026-06-26"
+                        and row.get("verdict") is None and row.get("impressions") == [])
+
+        # 5. Update: append an impression + set verdict + verdict status (drink flow).
         rc, out, err = run(UPDATE, {
             "match": {"wine": "Test Bottle Reserve", "vintage": 2021},
             "set": {"status": "love", "verdict": "Punches above its weight.", "opened_on": "2026-06-26"},
@@ -103,7 +114,7 @@ def main():
         all_ok &= check("update: verdict set", bool(row.get("verdict")))
         all_ok &= check("update: one impression appended", len(row.get("impressions", [])) == 1)
 
-        # 5. Append a second impression — array grows, not replaced.
+        # 6. Append a second impression — array grows, not replaced.
         rc, out, err = run(UPDATE, {
             "match": {"wine": "Test Bottle Reserve", "vintage": 2021},
             "append_impression": {"date": "2026-06-27", "note": "Next day, recorked: still bright."},
@@ -111,7 +122,7 @@ def main():
         row = last_row(cellar)
         all_ok &= check("update: impressions now length 2", len(row.get("impressions", [])) == 2)
 
-        # 6. No match -> error.
+        # 7. No match -> error.
         rc, out, err = run(UPDATE, {
             "match": {"wine": "Does Not Exist", "vintage": 1900},
             "set": {"status": "love"},

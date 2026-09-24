@@ -67,7 +67,7 @@ The feedback layer is ported from the green-tea-log model: a categorical `status
 | 29 | `opened_on` | str/null | ISO date actually opened. Blank while cellared. Cellared Under = *intent*, Opened On = *actual*. |
 | 30 | `tasting_notes` | str/null | **STRICT.** Vintage-specific producer/critic notes only. Blank if no vintage-specific note exists. Do NOT generalize from grape/region/adjacent vintage. |
 | 31 | `fallback_tasting_notes` | str/null | **LOOSER.** Used only when `tasting_notes` is blank. Cross-vintage, adjacent-vintage, house-style notes — always prefixed with context (`"Cross-vintage:"`, `"2022 vintage:"`, `"House style:"`). |
-| 32 | `status` | enum | Lifecycle + verdict in one field. **Every row is a bottle the user owns — `status` is post-purchase state, never whether they bought it.** `pending` (bought & home, awaiting review — user hasn't set `cellared_under` yet; short for *pending review*, NOT "in the store"/"not yet bought") → `cellared` (reviewed, target year set, not yet drunk) → on drinking, one shared verdict: `love` / `like` / `meh` / `pass`. Default on plain entry: `cellared`. |
+| 32 | `status` | enum | Lifecycle + verdict in one field. **Every row is a bottle the user owns — `status` is post-purchase state, never whether they bought it.** `pending` (bought & home, awaiting review — user hasn't set `cellared_under` yet; short for *pending review*, NOT "in the store"/"not yet bought") → `cellared` (reviewed, target year set, not yet drunk) → `opened` (opened, awaiting tasting verdict) → `love` / `like` / `meh` / `pass` (verdict). Default on plain entry: `cellared`. |
 | 33 | `verdict` | str/null | The shared, plain-spoken summary judgment (one or two sentences). Rendered italic in the view. Blank until drunk. This is **your** voice, not a critic's — keep `tasting_notes`/`fallback` for sourced notes. |
 | 34 | `impressions` | array | Evolving log of how it actually drank: `[{"date": "2026-06-26", "note": "..."}]`. Append-only — first pour, after it opens up, last glass, next-day recork. Empty `[]` until drunk. |
 
@@ -111,6 +111,7 @@ When the user is opening / drinking a bottle and wants the story plus to leave a
 1. **Surface the bottle.** Find its row by name (+ vintage if ambiguous). Print the made-how / vendor / window: grapes, region, estate, fermentation, oak, ABV, drink window, and any `tasting_notes`/`fallback_tasting_notes`. This is the "how was it made" the user wants in hand while sipping.
 2. **Talk it through.** Capture impressions as they come. The user may give one verdict, or evolve it across the night / next day — **append, don't overwrite.** Each `impressions` entry is `{date, note}`; label the moment in the note ("first pour", "+45 min", "last glass", "recorked, day 2").
 3. **Patch via `update_wine.py`:**
+   - If opening is confirmed but the user hasn't tasted it yet, set `opened_on` and `status: "opened"`; keep `verdict` blank and `impressions` empty until actual feedback arrives. This also applies when adding a bottle being opened directly, without a prior cellar row.
    - First sitting: set `opened_on` (ISO date), append the first impression, set a `verdict` and `status` (`love`/`like`/`meh`/`pass`).
      ```bash
      python3 skill/scripts/update_wine.py <<'JSON'

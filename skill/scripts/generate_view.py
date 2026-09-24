@@ -63,6 +63,7 @@ WIDE_KEYS = {"verdict", "impressions", "tasting_notes", "fallback_tasting_notes"
 STATUS_LABELS = {
     "pending": "⏳ Needs year",
     "cellared": "Cellared",
+    "opened": "Opened · tasting pending",
     "love": "♥ Love",
     "like": "Like",
     "meh": "Meh",
@@ -334,6 +335,7 @@ def main() -> int:
   }}
   .badge-pending  {{ background: #f6e3b0; color: #6b4e0e; }}
   .badge-cellared {{ background: #e6e1d8; color: #5c574e; }}
+  .badge-opened   {{ background: #dce9ee; color: #315565; }}
   .badge-love     {{ background: #2f7d4f; color: #fff; }}
   .badge-like     {{ background: #cfe7d4; color: #235c38; }}
   .badge-meh      {{ background: #e8e0d2; color: #7a6f55; }}
