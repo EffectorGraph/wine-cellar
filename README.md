@@ -24,7 +24,7 @@ Open the [mobile cellar](https://effectorgraph.github.io/wine-cellar/) or the st
 | `inventory/query_inventory.py` | Filters the local store index and prints matches only. |
 | `inventory/SCHEMA.md` | Store index fields and scanner data path; read before changing the scanner. |
 
-Bottle status describes what happened after purchase. `pending` means owned and awaiting review, which may include an opening-year choice; optional research gaps can be deferred. `cellared` means owned and unopened; `opened` means opened without a settled verdict; `love`, `like`, `meh`, and `pass` record a verdict; `finished` records consumption without a rating. Do not infer purchase or consumption from a recommendation.
+Bottle status describes what happened after purchase. `pending` means owned and awaiting review, which may include an opening-year choice; research is part of every entry by default; defer it only at the user's explicit request, and leave unsupported facts unknown. `cellared` means owned and unopened; `opened` means opened without a settled verdict; `love`, `like`, `meh`, and `pass` record a verdict; `finished` records consumption without a rating. Do not infer purchase or consumption from a recommendation.
 
 Use GitHub MCP to fetch the current complete `cellar.jsonl` and its SHA before a phone edit. Update the full file with that SHA as the expected version. If it changed, refetch and reapply only the user's confirmed intent. Local updates should use the scripts' SHA guard. Preserve bottle IDs, ratings, and impression history.
 
