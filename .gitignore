@@ -22,3 +22,7 @@ __pycache__/
 inventory/.venv/
 inventory/.refresh.log
 inventory/.store-changes.txt
+
+_site/
+
+.cellar.jsonl.lock

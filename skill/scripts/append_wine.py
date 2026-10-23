@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 """Append one wine to cellar.jsonl.
 
-Reads a JSON object from stdin with the 31 objective keys (all present; use null
-or "" for blanks). The 3 feedback keys (status, verdict, impressions) are
-optional and default to {status: "cellared", verdict: null, impressions: []} —
-the wine-buying skill passes status: "pending" when staging a store purchase.
+Reads a JSON object from stdin. A quick capture may include only `wine` and an
+optional `vintage`; omitted facts are stored as null. The 3 feedback keys are
+optional and default to {status: "cellared", verdict: null, impressions: []}.
 
   wine, winery, vintage, grapes, subregion, region, country, estate,
   soil, elevation, vine_age, importer,
@@ -17,17 +16,18 @@ the wine-buying skill passes status: "pending" when staging a store purchase.
   [status, verdict, impressions]
 
 Typed fields:
-  - int (required):          vintage, drink_from, drink_by
+  - int or null:             vintage, drink_from, drink_by
   - int (optional/nullable): whole_bunch_pct, new_oak_pct, cases_produced, cellared_under
   - float (optional):        abv, ph, ta, residual_sugar
-  - status: one of pending/cellared/love/like/meh/pass
+  - status: one of pending/cellared/opened/love/like/meh/pass/finished
   - impressions: JSON array of {date, note} objects
   - str: everything else.
 
 Path discovery (in order):
   1. WINE_CELLAR_PATH env var — absolute path to cellar.jsonl (override)
-  2. ~/.claude/skills/wine-cellar/.local-config.json → {"repo_path": "..."}
-  3. Fallback: print instructions and exit non-zero
+  2. Repository containing this script
+  3. ~/.agents/skills/wine-cellar/.local-config.json or ~/.claude/... config
+  4. Fallback: print instructions and exit non-zero
 
 Prints a JSON verification blob on stdout after writing.
 """
@@ -46,8 +46,13 @@ def resolve_cellar_path() -> Path:
     if env:
         return Path(env)
 
-    cfg_path = Path.home() / ".claude" / "skills" / "wine-cellar" / ".local-config.json"
-    if cfg_path.exists():
+    local_cellar = Path(__file__).resolve().parents[2] / "cellar.jsonl"
+    if local_cellar.exists():
+        return local_cellar
+    for install_root in (".agents", ".claude"):
+        cfg_path = Path.home() / install_root / "skills" / "wine-cellar" / ".local-config.json"
+        if not cfg_path.exists():
+            continue
         try:
             cfg = json.loads(cfg_path.read_text())
             repo_path = cfg.get("repo_path")
@@ -67,22 +72,27 @@ def resolve_cellar_path() -> Path:
     sys.exit(2)
 
 
-def main() -> int:
-    try:
-        data = json.load(sys.stdin)
-    except json.JSONDecodeError as e:
-        print(f"ERROR: invalid JSON on stdin: {e}", file=sys.stderr)
-        return 2
-
-    if not schema.validate(data, require_objective=True):
-        return 2
-
-    obj = schema.normalize(data)
-
-    cellar_path = resolve_cellar_path()
+def _append_locked(obj, expected_hash, cellar_path) -> int:
     if not cellar_path.exists():
         print(f"ERROR: cellar file not found: {cellar_path}", file=sys.stderr)
         return 2
+
+    try:
+        original_hash = schema.sha256_file(cellar_path)
+        rows = schema.load_cellar(cellar_path)
+    except (OSError, ValueError) as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 2
+    if expected_hash is not None and expected_hash != original_hash:
+        print("ERROR: cellar changed since it was read; refusing conflicting write", file=sys.stderr)
+        return 3
+    write_guard_hash = expected_hash or original_hash
+    if any(row.get("bottle_id") == obj["bottle_id"] for row in rows if isinstance(row, dict)):
+        print(f"ERROR: bottle_id already exists: {obj['bottle_id']}", file=sys.stderr)
+        return 2
+    if schema.sha256_file(cellar_path) != write_guard_hash:
+        print("ERROR: cellar changed during append; refusing conflicting write", file=sys.stderr)
+        return 3
 
     # Append one line
     line = json.dumps(obj, ensure_ascii=False)
@@ -101,6 +111,39 @@ def main() -> int:
     }
     print(json.dumps(out, ensure_ascii=False, indent=2))
     return 0
+
+
+def main() -> int:
+    try:
+        data = json.load(sys.stdin)
+    except json.JSONDecodeError as exc:
+        print(f"ERROR: invalid JSON on stdin: {exc}", file=sys.stderr)
+        return 2
+    if not isinstance(data, dict) or not data.get("wine"):
+        print("ERROR: input must be an object with a non-empty 'wine'", file=sys.stderr)
+        return 2
+    expected_hash = data.pop("expected_sha256", None)
+    unknown = [key for key in data if key not in schema.CANONICAL_KEYS]
+    if unknown:
+        print(f"ERROR: unknown input keys: {unknown}", file=sys.stderr)
+        return 2
+    if not schema.validate(data, require_objective=False):
+        return 2
+    data = dict(data)
+    if "status" not in data:
+        ready = all(data.get(key) is not None for key in ("drink_from", "cellared_under", "drink_by"))
+        data["status"] = "cellared" if ready else "pending"
+    obj = schema.normalize(data)
+    if not schema.validate_row(obj):
+        print("ERROR: normalized input does not form a valid row", file=sys.stderr)
+        return 2
+    try:
+        cellar_path = resolve_cellar_path()
+        with schema.locked_cellar(cellar_path):
+            return _append_locked(obj, expected_hash, cellar_path)
+    except (OSError, ValueError) as exc:
+        print(f"ERROR: could not lock or update cellar: {exc}", file=sys.stderr)
+        return 2
 
 
 if __name__ == "__main__":

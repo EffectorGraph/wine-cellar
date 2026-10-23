@@ -30,14 +30,10 @@ install_wine_cellar() {
   local install_root="$1"
   local skill_dst="$install_root/wine-cellar"
 
-  mkdir -p "$skill_dst/scripts"
+  mkdir -p "$skill_dst/scripts" "$skill_dst/references"
   cp "$WINE_CELLAR_SRC/SKILL.md" "$skill_dst/SKILL.md"
-  cp "$WINE_CELLAR_SRC/scripts/schema.py" "$skill_dst/scripts/schema.py"
-  cp "$WINE_CELLAR_SRC/scripts/append_wine.py" "$skill_dst/scripts/append_wine.py"
-  cp "$WINE_CELLAR_SRC/scripts/update_wine.py" "$skill_dst/scripts/update_wine.py"
-  cp "$WINE_CELLAR_SRC/scripts/generate_view.py" "$skill_dst/scripts/generate_view.py"
-  cp "$WINE_CELLAR_SRC/scripts/test_backend.py" "$skill_dst/scripts/test_backend.py"
-  cp "$WINE_CELLAR_SRC/scripts/sync_skill.sh" "$skill_dst/scripts/sync_skill.sh"
+  rsync -a --exclude='__pycache__/' --exclude='*.pyc' "$WINE_CELLAR_SRC/scripts/" "$skill_dst/scripts/"
+  cp "$REPO_ROOT/AGENTS.md" "$skill_dst/references/AGENTS.md"
   chmod +x "$skill_dst/scripts/"*.py "$skill_dst/scripts/sync_skill.sh"
   write_config "$skill_dst"
   echo "✓ wine-cellar installed at $skill_dst"
@@ -56,6 +52,8 @@ install_companion() {
 
   mkdir -p "$skill_dst"
   cp -R "$skill_src/." "$skill_dst/"
+  mkdir -p "$skill_dst/references"
+  cp "$REPO_ROOT/AGENTS.md" "$skill_dst/references/AGENTS.md"
   write_config "$skill_dst"
   echo "✓ $skill_name installed at $skill_dst"
 }
@@ -70,4 +68,4 @@ done
 echo
 echo "Next steps:"
 echo "  1. Restart your Codex and Claude sessions to pick up skill changes"
-echo "  2. (First-time setup only) cd $REPO_ROOT && git config core.hooksPath .githooks"
+echo "  2. (First-time setup only) Run from the clone: git config core.hooksPath .githooks"

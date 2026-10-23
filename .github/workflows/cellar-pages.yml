@@ -1,0 +1,52 @@
+name: Validate and publish cellar
+on:
+  push:
+    branches: [main, codex/phone-cellar]
+    paths: [cellar.jsonl, preferences.json, 'skill/scripts/**', .github/workflows/cellar-pages.yml]
+  pull_request:
+    paths: [cellar.jsonl, 'skill/scripts/**', .github/workflows/cellar-pages.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: cellar-pages
+  cancel-in-progress: false
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python3 skill/scripts/validate_cellar.py
+      - run: python3 skill/scripts/test_backend.py
+      - run: python3 skill/scripts/test_rebuild_publish.py
+      - run: python3 skill/scripts/generate_view.py
+  publish:
+    if: github.event_name != 'pull_request'
+    needs: validate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Rebuild latest source and save generated files
+        run: python3 skill/scripts/rebuild_publish.py
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - name: Publish read-only website
+        id: deployment
+        uses: actions/deploy-pages@v4

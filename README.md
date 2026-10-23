@@ -1,169 +1,51 @@
 # Wine Cellar
 
-A shared wine-cellar database for the Wilterson household. Data lives as JSONL, with an auto-generated HTML view for browsing. Codex and Claude share four bundled skills for buying, managing, choosing, and refreshing wine.
+A shared wine cellar managed with JSONL and GitHub. The source of truth is `cellar.jsonl`; GitHub Actions validates it and rebuilds the read-only HTML view after source changes. A successful data save and a successful view build/publication are separate outcomes.
 
-## The bottle lifecycle
+The intended public read-only view is <https://effectorgraph.github.io/wine-cellar/cellar-view.html>. Its availability depends on GitHub Pages publication; do not assume a recent save is visible until Actions confirms it.
 
-The repo tracks a bottle from shelf to last glass, as a loop:
+## Skills
 
-1. **Buy** — at the store, the **`wine-buying`** skill reads shelf photos, recommends what to grab based on what you've loved/passed (`cellar.jsonl` verdicts + `preferences.json`), and — once you've **actually bought** them — logs each purchase as a `pending` row. Bottles you looked at and passed on never enter the file.
-2. **Review** — the **`wine-cellar`** skill surfaces `pending` bottles so you set a target opening year; they flip to `cellared`.
+- [`wine-cellar`](skill/SKILL.md): add bottles, set opening-year targets, and record opening or tasting feedback.
+- [`wine-buying`](wine-buying/SKILL.md): concise store recommendations and logging confirmed purchases.
+- [`wine-tonight-recommendation`](wine-tonight-recommendation/SKILL.md): choose an owned bottle for tonight.
+- [`wine-inventory-refresh`](wine-inventory-refresh/SKILL.md): refresh or troubleshoot the local store inventory index at home.
+- [`AGENTS.md`](AGENTS.md): canonical data-safety, phone-shopping, and shared workflow guide. `CLAUDE.md` imports it.
 
-> **`pending` = *pending review*, not "pending purchase".** Every unopened `pending` or `cellared` row is a bottle you own and have in hand; `pending` only means you haven't picked its target opening year (`cellared_under`) yet. Verdict rows can also record bottles drunk at restaurants that were never cellared.
-3. **Choose** — the **`wine-tonight-recommendation`** skill ranks the relevant unopened bottles for the occasion, fills research gaps, adds price context, and preserves the detailed recommendation table.
-4. **Drink** — when you open one, `wine-cellar` records `opened` while your verdict is still forming, then captures your **verdict** + an evolving **impressions** log (`love`/`like`/`meh`/`pass`).
+## Data and generated files
 
-Each verdict feeds the next shopping trip. Every row carries 34 fields: 31 objective facts + 3 subjective feedback fields (`status`, `verdict`, `impressions`).
-
-## Store inventory (Total Wine Centennial #2302)
-
-So shopping isn't slow guesswork, the repo keeps a **live local index of every in-stock wine over $20** at Total Wine #2302 — price, stock count, and shelf aisle per wine — in `inventory/totalwine-centennial.jsonl`. At the store, `inventory/query_inventory.py` filters it and prints only the matches (token-tight, no live scraping).
-
-- **Refresh at home** (never at the store): the **`wine-inventory-refresh`** skill, or `bash inventory/refresh_inventory.sh`. It drives a local browser past Total Wine's bot-wall, reads the store's listing data, reconciles against the existing index (only real changes are written), and commits the diff.
-- **Automate it:** `bash inventory/install_schedule.sh` once installs a **biweekly launchd job** that refreshes unattended in your login session.
-- How it works + troubleshooting: see `wine-inventory-refresh/SKILL.md` and the repo `CLAUDE.md`.
-
-## What's in the repo
-
-| File | Role |
+| Path | Purpose |
 |---|---|
-| `cellar.jsonl` | **Source of truth.** One JSON object per wine, 34 fields. Edit via the skills, not by hand (but manual edits ARE allowed — see below). |
-| `cellar-view.html` | **Auto-generated** sortable/filterable table — status badges, pending-review surfacing, verdicts, impressions. Regenerated on every edit. Don't edit by hand. |
-| `preferences.json` | Living likes / dislikes / benchmarks taste profile. Read by `wine-buying` to drive recommendations; grows as verdicts land. |
-| `skill/SKILL.md` | The `wine-cellar` skill: entry, review of pending bottles, drink feedback. |
-| `wine-buying/SKILL.md` | The `wine-buying` skill: shelf photos → recommend → stage purchases. Shares this repo's backend. |
-| `wine-tonight-recommendation/SKILL.md` | The `wine-tonight-recommendation` skill: rank owned bottles for tonight with price, composition, character, readiness, and service. |
-| `skill/scripts/schema.py` | Single source of truth for field order + validation. Imported by the other scripts and the pre-commit hook. |
-| `skill/scripts/append_wine.py` | Appends one row of JSONL. |
-| `skill/scripts/update_wine.py` | Patches one existing row by wine+vintage (review + feedback). |
-| `skill/scripts/generate_view.py` | Rebuilds `cellar-view.html` from `cellar.jsonl`. |
-| `skill/scripts/test_backend.py` | Round-trip tests for append + update. |
-| `skill/scripts/sync_skill.sh` | Installs all four skills into Codex (`~/.agents/skills/`) and Claude (`~/.claude/skills/`) and writes the per-user path config. |
-| `inventory/totalwine-centennial.jsonl` | Live in-stock >$20 store index for #2302 (price, stock, aisle). Built by `scan_store.py`. |
-| `inventory/scan_store.py` | Walks Total Wine's listing JSON via a local browser → reconciles the store index. |
-| `inventory/SCHEMA.md` | **Reference**: row schema + scraping internals (data path, endpoint, in-stock/price logic, gotchas). Read before editing the scanner. |
-| `inventory/query_inventory.py` | Store-time filter over the index — prints only matches (token-tight). |
-| `inventory/refresh_inventory.sh` + `install_schedule.sh` | Refresh wrapper (pull→scan→commit/push) + biweekly launchd installer. |
-| `wine-inventory-refresh/SKILL.md` | The refresh skill: run the scan at home + troubleshooting. |
-| `.githooks/pre-commit` | Guards against invalid JSONL, bad `status`, stale view, behind-remote commits. |
-| `config.example.json` | Placeholder. The real per-user `.local-config.json` is written by `sync_skill.sh` and gitignored. |
+| `cellar.jsonl` | Source of truth; one complete bottle record per line, including stable `bottle_id`, facts, status, verdict, and impressions. |
+| `preferences.json` | Living taste profile informed by recorded verdicts. |
+| `cellar-view.html` | Generated, read-only view. Do not edit by hand. |
+| `skill/scripts/` | Schema, local JSONL helpers, guarded updates, and validation. |
+| `inventory/totalwine-centennial.jsonl` | Local snapshot of in-stock wines over $20 at Total Wine Centennial #2302. |
+| `inventory/query_inventory.py` | Filters the local store index and prints matches only. |
+| `inventory/SCHEMA.md` | Store index fields and scanner data path; read before changing the scanner. |
 
-## Sarah's setup — already done
+Bottle status describes what happened after purchase. `pending` means owned and awaiting review, which may include an opening-year choice; optional research gaps can be deferred. `cellared` means owned and unopened; `opened` means opened without a settled verdict; `love`, `like`, `meh`, and `pass` record a verdict; `finished` records consumption without a rating. Do not infer purchase or consumption from a recommendation.
 
-The local environment is set up:
-- Repo cloned to `~/repos/databases/wine-cellar/`
-- All four skills installed for Codex and Claude via `sync_skill.sh`
-- `.local-config.json` written with the local repo path
-- Git hooks enabled (`git config core.hooksPath .githooks`)
+Use GitHub MCP to fetch the current complete `cellar.jsonl` and its SHA before a phone edit. Update the full file with that SHA as the expected version. If it changed, refetch and reapply only the user's confirmed intent. Local updates should use the scripts' SHA guard. Preserve bottle IDs, ratings, and impression history.
 
-## Husband's onboarding
+## Local setup
 
-### 1. Prereqs
-
-- `git` (comes with macOS, or `brew install git`)
-- `gh` (GitHub CLI: `brew install gh`)
-- `python3` (comes with macOS 12+)
-- No pip packages needed — everything is stdlib-only
-
-### 2. Authenticate GitHub
-
-```bash
-gh auth login
-```
-
-Pick: `GitHub.com` → `HTTPS` → `Yes (authenticate git)` → `Login with a web browser`. Complete in browser.
-
-### 3. Clone the repo
-
-```bash
-mkdir -p ~/repos/databases
-cd ~/repos/databases
-git clone https://github.com/EffectorGraph/wine-cellar.git
-cd wine-cellar
-```
-
-### 4. Install the skills
+Clone the repository and run:
 
 ```bash
 bash skill/scripts/sync_skill.sh
 ```
 
-This installs all four skills into `~/.agents/skills/` for Codex and `~/.claude/skills/` for Claude, then writes a `.local-config.json` telling each installation where your clone lives.
+The installer places the four skills in Codex and Claude skill directories, copies the canonical `AGENTS.md` reference, and writes a per-user `.local-config.json` that points to this clone. Restart the client after installing or updating the skills.
 
-### 5. Enable the safety hooks
+To enable local Git checks, configure the repository's hooks once:
 
 ```bash
 git config core.hooksPath .githooks
 ```
 
-This enables the pre-commit hook that catches invalid JSONL, stale HTML view, and behind-remote commits.
+For local development, use the helpers under `skill/scripts/` and check the latest `AGENTS.md` workflow before changing data. Source-data save, validation, HTML rebuild, and publication should be reported as separate steps.
 
-### 6. Restart Codex or Claude
+## Store inventory
 
-Close and reopen the client you use. The skills will pick up the new config on restart.
-
-### 7. Try it
-
-Say "add a wine to the cellar" followed by any wine name and vintage. The skill should:
-- Pull latest from GitHub
-- Look up the wine and propose details
-- Ask for your target opening year
-- Append to `cellar.jsonl`, regenerate `cellar-view.html`, commit, and push
-
-## Daily workflow
-
-### Via Codex or Claude (primary)
-
-Just say "add <wine name> <vintage>" or "cellar this: <...>". The skill handles research, writing, and git sync. Say "no preference for cellared year, pick one inside the window" if you don't care about the opening-year target.
-
-### Manual edit (backup)
-
-You can edit `cellar.jsonl` directly if the skill isn't available:
-
-1. `git pull --ff-only`
-2. Edit a line in `cellar.jsonl` (or append a new one)
-3. `python3 skill/scripts/generate_view.py` to regenerate the HTML view
-4. `git add cellar.jsonl cellar-view.html`
-5. `git commit -m "Update <wine>: <reason>"` (the hook will reject if JSONL is broken or view is stale)
-6. `git push`
-
-## Conventions
-
-### Commit messages
-
-- New row: `Add <wine name> <vintage>`
-- Staged purchases (wine-buying): `Stage N bottles from <shop/date>`
-- Review (set target year): `Review: set cellared-under for <wine> <vintage>`
-- Feedback (drinking): `Feedback: <wine> <vintage> — <status>`
-- Other update: `Update <wine>: <reason>` (e.g. "Update Aonair 2021: set Opened On 2026-12-24")
-- Schema or skill changes: `Schema: <change>` or `Skill: <change>`
-
-### Pull-before-edit
-
-Always `git pull --ff-only` before making any edit. The pre-commit hook will reject a commit if you're behind remote, so if you skip this step you'll find out before push — but you'll still have to re-do the edit on top of latest. Saves hassle to pull first.
-
-### Conflicts
-
-If `git pull` reports a non-fast-forward conflict, it usually means the other user pushed a change since your last pull. Options:
-- `git pull --rebase` then resolve any manual conflicts in `cellar.jsonl` (plain text — diff-friendly)
-- Or throw away your local work with `git reset --hard origin/main` if you haven't committed yet
-
-The JSONL format was chosen partly to make merges sane: edits to different wines on different lines merge cleanly.
-
-## Optional: GitHub Pages (browse the view online)
-
-The `cellar-view.html` page is self-contained — no external deps — so it can be served via GitHub Pages:
-
-1. In repo Settings → Pages
-2. Source: `Deploy from a branch` → `main` / `/ (root)`
-3. Save
-4. After a minute or two, browse at `https://effectorgraph.github.io/wine-cellar/cellar-view.html`
-
-Nice for sharing with friends/family who don't have GitHub access. Totally optional.
-
-## File roles summary
-
-- **Source of truth: `cellar.jsonl`**. Everything downstream derives from it.
-- **Derived: `cellar-view.html`**. Never edit by hand — the pre-commit hook will probably reject it anyway.
-- **Per-user: `.local-config.json`**. Written by `sync_skill.sh`, not committed.
-- **Committed: everything else.**
+The local inventory index is a convenience snapshot, not guaranteed live stock. At the store, query it with `inventory/query_inventory.py`; do not load the raw JSONL or scrape the live site. If it is missing or stale, say that availability is unverified and recommend from the cellar and known preferences. Refresh at home with `wine-inventory-refresh`.

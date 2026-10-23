@@ -1,169 +1,196 @@
-"""Shared schema definition for the wine-cellar backend scripts.
-
-Single source of truth for the JSONL field order, types, and validation —
-imported by append_wine.py, update_wine.py, and generate_view.py so the three
-never drift apart.
-
-The row has 34 keys: 31 objective (technical) fields followed by 3 subjective
-(feedback) fields. Feedback fields were added on top of the original schema and
-are optional on input (defaulted), so older 31-key payloads still append cleanly.
-"""
+"""Shared JSONL schema and file helpers for the wine-cellar backend."""
 from __future__ import annotations
 
+import hashlib
+import fcntl
+import json
+import math
+import re
 import sys
+import uuid
+from datetime import date
+from contextlib import contextmanager
+from pathlib import Path
 
-# ─────────────────────────────────────────────────────────────────────
-# Canonical field order. Output rows always use exactly this order so git
-# diffs stay readable.
-# ─────────────────────────────────────────────────────────────────────
 OBJECTIVE_KEYS = [
-    "wine", "winery", "vintage", "grapes", "subregion", "region",
+    "bottle_id", "wine", "winery", "vintage", "grapes", "subregion", "region",
     "country", "estate", "soil", "elevation", "vine_age", "importer",
     "harvest_date", "fermentation_vessel", "whole_bunch_pct", "malolactic",
-    "barrel_time", "oak_origin", "new_oak_pct",
-    "abv", "ph", "ta", "residual_sugar",
-    "cases_produced", "release_date",
-    "drink_from", "cellared_under", "drink_by", "opened_on",
-    "tasting_notes", "fallback_tasting_notes",
+    "barrel_time", "oak_origin", "new_oak_pct", "abv", "ph", "ta",
+    "residual_sugar", "cases_produced", "release_date", "drink_from",
+    "cellared_under", "drink_by", "opened_on", "tasting_notes",
+    "fallback_tasting_notes",
 ]
-
-# Subjective layer (ported from green-tea-log): a categorical verdict, a prose
-# summary, and an evolving impressions log. No numeric scores.
 FEEDBACK_KEYS = ["status", "verdict", "impressions"]
-
 CANONICAL_KEYS = OBJECTIVE_KEYS + FEEDBACK_KEYS
-
-# ─────────────────────────────────────────────────────────────────────
-# Type rules.
-#   cellared_under is the user's target open year — optional now, because
-#   a just-purchased bottle ("pending") doesn't have one until the user
-#   reviews it and picks a year.
-# ─────────────────────────────────────────────────────────────────────
-REQUIRED_INTS = ("vintage", "drink_from", "drink_by")
+INTEGER_KEYS = ("vintage", "drink_from", "drink_by")
 OPTIONAL_INTS = ("whole_bunch_pct", "new_oak_pct", "cases_produced", "cellared_under")
 OPTIONAL_FLOATS = ("abv", "ph", "ta", "residual_sugar")
-
-# status lifecycle — EVERY row is a bottle the user already owns; status is
-# post-purchase state, never "did they buy it".
-#   pending  = bought & home, awaiting review (user hasn't set cellared_under).
-#              NOT "in the store" / "not yet bought" — short for PENDING REVIEW.
-#   cellared = bought, reviewed, target year set, not yet drunk.
-#   opened  = opened, awaiting the user's tasting verdict.
-#   love/like/meh/pass = drunk, verdict recorded (green-tea vocabulary).
-ALLOWED_STATUS = ("pending", "cellared", "opened", "love", "like", "meh", "pass")
-
-FEEDBACK_DEFAULTS = {
-    "status": "cellared",
-    "verdict": None,
-    "impressions": [],
-}
+ALLOWED_STATUS = ("pending", "cellared", "opened", "love", "like", "meh", "pass", "finished")
+FEEDBACK_DEFAULTS = {"status": "cellared", "verdict": None, "impressions": []}
 
 
-def blank(v):
-    """Normalize empty string to None; pass everything else through."""
-    return None if v in (None, "") else v
+def new_bottle_id() -> str:
+    """Return a stable identifier for one physical bottle row."""
+    return str(uuid.uuid4())
 
 
-def check_int(name, v, required):
-    if v is None or v == "":
-        if required:
-            print(f"ERROR: {name} is required and must be an integer", file=sys.stderr)
-            return False
-        return True
-    if not isinstance(v, int) or isinstance(v, bool):
-        print(
-            f"ERROR: {name} must be a JSON integer (or null for optional fields), "
-            f"got {type(v).__name__}={v!r}",
-            file=sys.stderr,
-        )
+def needs_review(row: dict) -> bool:
+    """Flag bottles awaiting review and impossible opened dates for unopened rows."""
+    return (row.get("status") == "pending" or
+            (row.get("status") in ("pending", "cellared") and bool(row.get("opened_on"))))
+
+
+def has_status_date_conflict(row: dict) -> bool:
+    """A pending/cellared row with an opened date has contradictory history."""
+    return row.get("status") in ("pending", "cellared") and bool(row.get("opened_on"))
+
+
+def is_available(row: dict) -> bool:
+    """Unopened inventory available for choosing a bottle."""
+    return row.get("status") in ("pending", "cellared") and not row.get("opened_on")
+
+
+def available_for_finish(rows, wine=None, vintage=None):
+    """Return available matching rows in finish order (target year, then null)."""
+    candidates = [row for row in rows if is_available(row)
+                  and (wine is None or row.get("wine") == wine)
+                  and (vintage is None or row.get("vintage") == vintage)]
+    return [row for _, row in sorted(
+        enumerate(candidates),
+        key=lambda pair: (pair[1].get("cellared_under") is None,
+                          pair[1].get("cellared_under") or 0, pair[0]),
+    )]
+
+
+def blank(value):
+    return None if value in (None, "") else value
+
+
+def _check_int(name, value, *, required=False):
+    if value in (None, ""):
+        return not required
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def _is_numeric_estimate(value):
+    """Allow documented ~-prefixed estimates for optional technical values."""
+    return isinstance(value, str) and bool(re.match(r"^~\s*[<>≤≥]?\s*\d", value))
+
+
+def _is_iso_date(value):
+    if not isinstance(value, str):
         return False
-    return True
-
-
-def check_float(name, v):
-    if v is None or v == "":
-        return True
-    if isinstance(v, bool):
-        print(f"ERROR: {name} must be a number (or null), got bool", file=sys.stderr)
+    try:
+        return date.fromisoformat(value).isoformat() == value
+    except ValueError:
         return False
-    if not isinstance(v, (int, float)):
-        print(
-            f"ERROR: {name} must be a JSON number (or null), got {type(v).__name__}={v!r}",
-            file=sys.stderr,
-        )
-        return False
-    return True
 
 
-def check_status(v):
-    if v not in ALLOWED_STATUS:
-        print(
-            f"ERROR: status must be one of {ALLOWED_STATUS}, got {v!r}",
-            file=sys.stderr,
-        )
-        return False
-    return True
+def validate(obj, *, require_objective=True, report=True):
+    """Validate a row or partial patch. Optional drink-window years may be unknown."""
+    errors = []
+    if not isinstance(obj, dict):
+        errors.append("row must be a JSON object")
+    else:
+        if require_objective:
+            missing = [key for key in OBJECTIVE_KEYS if key not in obj]
+            if missing:
+                errors.append(f"missing keys: {missing}")
+            if not obj.get("wine"):
+                errors.append("wine is required")
+            if not obj.get("bottle_id"):
+                errors.append("bottle_id is required")
+            elif not isinstance(obj["bottle_id"], str):
+                errors.append("bottle_id must be a UUID string")
+            else:
+                try:
+                    if str(uuid.UUID(obj["bottle_id"])) != obj["bottle_id"]:
+                        raise ValueError("not canonical")
+                except (ValueError, AttributeError):
+                    errors.append("bottle_id must be a UUID string")
+            if not isinstance(obj.get("wine"), str) or not obj.get("wine"):
+                errors.append("wine must be a non-empty string")
+            for key in FEEDBACK_KEYS:
+                if key not in obj:
+                    errors.append(f"missing key: {key}")
+        for key in INTEGER_KEYS:
+            if key in obj and not _check_int(key, obj[key]):
+                errors.append(f"{key} must be an integer or null")
+        for key in OPTIONAL_INTS:
+            value = obj.get(key)
+            estimate_ok = key != "cellared_under" and _is_numeric_estimate(value)
+            if key in obj and not _check_int(key, value) and not estimate_ok:
+                errors.append(f"{key} must be an integer, a ~-prefixed estimate, or null")
+        for key in OPTIONAL_FLOATS:
+            value = obj.get(key)
+            if value is not None and (isinstance(value, bool) or
+                                      (not isinstance(value, (int, float)) and
+                                       not _is_numeric_estimate(value))):
+                errors.append(f"{key} must be a number or null")
+            elif isinstance(value, float) and not math.isfinite(value):
+                errors.append(f"{key} must be finite")
+        if "status" in obj and obj["status"] not in ALLOWED_STATUS:
+            errors.append(f"status must be one of {ALLOWED_STATUS}")
+        if "impressions" in obj:
+            impressions = obj["impressions"]
+            if not isinstance(impressions, list) or any(
+                not isinstance(item, dict) or "date" not in item or "note" not in item
+                for item in impressions
+            ):
+                errors.append("impressions must be an array of objects with date and note")
+            elif any(not _is_iso_date(item["date"]) for item in impressions):
+                errors.append("impression dates must use YYYY-MM-DD")
+        if obj.get("opened_on") is not None and not _is_iso_date(obj["opened_on"]):
+            errors.append("opened_on must use YYYY-MM-DD or null")
+    if report:
+        for error in errors:
+            print(f"ERROR: {error}", file=sys.stderr)
+    return not errors
 
 
-def check_impressions(v):
-    """impressions must be a list of {date, note} objects."""
-    if not isinstance(v, list):
-        print(f"ERROR: impressions must be a JSON array, got {type(v).__name__}", file=sys.stderr)
-        return False
-    for i, item in enumerate(v):
-        if not isinstance(item, dict) or "date" not in item or "note" not in item:
-            print(
-                f"ERROR: impressions[{i}] must be an object with 'date' and 'note', got {item!r}",
-                file=sys.stderr,
-            )
-            return False
-    return True
-
-
-def validate(obj, *, require_objective=True):
-    """Validate a row dict in place. Returns True if all checks pass.
-
-    require_objective=False relaxes the presence check (used by update_wine,
-    which only supplies the fields being changed).
-    """
-    ok = True
-    if require_objective:
-        missing = [k for k in OBJECTIVE_KEYS if k not in obj]
-        if missing:
-            print(f"ERROR: missing keys: {missing}", file=sys.stderr)
-            return False
-    for k in REQUIRED_INTS:
-        if k in obj:
-            ok &= check_int(k, obj[k], required=require_objective)
-    for k in OPTIONAL_INTS:
-        if k in obj:
-            ok &= check_int(k, obj[k], required=False)
-    for k in OPTIONAL_FLOATS:
-        if k in obj:
-            ok &= check_float(k, obj[k])
-    if "status" in obj and obj["status"] is not None:
-        ok &= check_status(obj["status"])
-    if "impressions" in obj and obj["impressions"] is not None:
-        ok &= check_impressions(obj["impressions"])
-    return ok
+def validate_row(row):
+    """Whole-row validation API used by the Actions validator and UI."""
+    return validate(row, require_objective=True, report=False)
 
 
 def normalize(data):
-    """Build a full 34-key row in canonical order from an input dict.
-
-    Objective string fields get blank-normalized; feedback fields fall back to
-    their defaults when absent. Integer fields are passed through as validated.
-    """
-    obj = {}
-    for k in OBJECTIVE_KEYS:
-        v = data.get(k)
-        if k in REQUIRED_INTS or k in OPTIONAL_INTS or k in OPTIONAL_FLOATS:
-            obj[k] = None if v in ("",) else v
-        else:
-            obj[k] = blank(v)
-    for k in FEEDBACK_KEYS:
-        if k in data and data[k] is not None:
-            obj[k] = data[k]
-        else:
-            obj[k] = FEEDBACK_DEFAULTS[k]
+    """Build a canonical row; omitted facts are honest unknowns."""
+    obj = {key: blank(data.get(key)) for key in OBJECTIVE_KEYS}
+    if not obj["bottle_id"]:
+        obj["bottle_id"] = new_bottle_id()
+    for key, default in FEEDBACK_DEFAULTS.items():
+        value = data.get(key)
+        obj[key] = default if value is None else value
     return obj
+
+
+def load_cellar(path):
+    """Load JSONL rows with line-numbered errors; skip blank lines."""
+    rows = []
+    with Path(path).open(encoding="utf-8") as stream:
+        for line_number, line in enumerate(stream, 1):
+            if not line.strip():
+                continue
+            try:
+                rows.append(json.loads(line))
+            except json.JSONDecodeError as exc:
+                raise ValueError(f"line {line_number} is invalid JSON: {exc}") from exc
+    return rows
+
+
+def sha256_file(path):
+    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+
+
+@contextmanager
+def locked_cellar(path):
+    """Serialize read-modify-write transactions across local skill processes."""
+    lock_path = Path(path).with_name(".cellar.jsonl.lock")
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    with lock_path.open("a", encoding="utf-8") as lock_file:
+        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)

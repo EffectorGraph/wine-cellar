@@ -1,32 +1,44 @@
 <!-- agent-sync:slot id="migration-001" audience="codex" -->
-# Wine Cellar — repo guide for Codex
+# Wine Cellar — shared agent guide
 <!-- agent-sync:end -->
 
-Four skills: `wine-cellar` (own / review / drink), `wine-buying` (shop), `wine-tonight-recommendation` (choose), and `wine-inventory-refresh` (refresh store index). Data = JSONL + git. See README.md.
+This is the canonical workflow guide for Codex and Claude. `CLAUDE.md` imports it. The repository stores cellar data in JSONL; the HTML cellar view is generated from that data. The four skills are `wine-cellar` (log, review, drink), `wine-buying` (shop), `wine-tonight-recommendation` (choose an owned bottle), and `wine-inventory-refresh` (refresh the store index).
 
-## STORE SESSIONS = TIGHT (hard token-budget rule)
+## Safe cellar writes
 
-At the store the user is on a phone with a hard token cap. Blow the budget → they buy nothing (this has happened — came home empty-handed). NON-NEGOTIABLE when shopping live:
+- Prefer the connected GitHub MCP for reads and writes, especially on a phone. Fetch `EffectorGraph/wine-cellar` → `cellar.jsonl` from `main`, including its current SHA, before editing.
+- Save the complete updated JSONL with that SHA as the expected current version. If the SHA conflicts, reread the latest file and reapply only the user's confirmed change. Never force or overwrite a conflict. If the connector is unavailable, use the local scripts with their SHA guard.
+- If a save returns an uncertain result, reread the file and verify the intended bottle IDs and fields before retrying; do not append a duplicate purchase or finish bottles twice.
+- Confirm the data save separately from the Actions rebuild/publication result. A successful save does not mean the generated view is rebuilt or published.
+- Use stable `bottle_id` to update a physical bottle. If no ID is available, match by wine + vintage only when exactly one row matches; otherwise ask which bottle.
+- Availability is recorded information, not certain live inventory. Never infer that a bottle was consumed from a recommendation, age, or a listing disappearing.
 
-- **NO live web scraping/research.** None.
-- **NO subagent fan-out.** No spawning agents. Never agents that can spawn agents.
-- **NO photo-by-photo upload marathons** as the primary path — too slow on store wifi.
-- **DO:** `git pull --ff-only` first (grabs the latest refresh — the biweekly job commits fresh inventory), then query the local index with `query_inventory.py` (it prints only matches — never read the raw JSONL into context), cross-ref `cellar.jsonl` + `preferences.json`, match to taste, recommend. Done.
-  - e.g. `python3 inventory/query_inventory.py --varietal cabernet --region napa --max-price 60 --limit 10`
-- If the index is missing/stale: recommend from the cellar + general knowledge, say it's unverified, and **still do not scrape live.**
+## Bottle lifecycle and logging
 
-## Inventory index — built at HOME, never at the store
+- `pending` and `cellared` mean owned and unopened. `opened` means opening is confirmed and a verdict is still forming. `love`, `like`, `meh`, and `pass` retain a tasting verdict. `finished` means consumed when no rating was given; do not invent one.
+- A recorded bottle is available for a tonight recommendation only when its status is `pending` or `cellared` and `opened_on` is null. This is recorded availability, not confirmation that the bottle is physically on hand.
+- “We finished that” is enough to record consumption. Clarify only bottle identity, vintage, or count when needed. Dates and a verdict are optional. If the opening date is unknown, leave `opened_on` null; an impression may use its logged date and say the consumption date is unknown.
+- Preserve existing ratings, verdicts, and impression history. Add new impressions; do not replace prior notes. A new rating may update the verdict/status while retaining the history.
+- Use only an explicitly stated quantity. When finishing some duplicate bottles, choose those with the earliest `cellared_under` first and null target years last; leave the remaining rows unchanged.
+- Unknown vintage facts and drink windows can stay null and be researched later. Never block a quick purchase log on optional research.
+- Recommendations are read-only. Record availability only when explicitly reported or verified; a recommendation is not evidence of opening or purchase.
+- When a `pending` or `cellared` row has an `opened_on` date, flag the history conflict. Confirm what happened before changing its status; setting an opening-year target alone does not resolve it.
+- Review at most three explicitly requested bottles in one catch-up. Do not turn review into a scheduled or mandatory checklist.
 
-Total Wine store #2302 (9505 E County Line Rd, Centennial). One live index, refreshed at home:
+## Store sessions: keep them short
 
-- **`inventory/totalwine-centennial.jsonl`** — every **in-stock wine over $20 at #2302** (~3.6k rows: name, brand, varietal, wine_type, price, live stock count, size, shelf `location`/bay, url, skuId). This is the store index `query_inventory.py` reads at the store.
-- **`inventory/scan_store.py`** — builds/refreshes it. A local `nodriver` Chrome sets store #2302, clears **PerimeterX** (HUMAN), and walks the wine listing `/wine/c/c0020?pageSize=200` (~43 pages, ~3 min), reading each page's server-rendered `window.INITIAL_STATE.search.results.products` — clean JSON with price + stock + aisle per wine, no per-product visits. Filters to in-stock + price>20. **Incremental reconcile**: only rows whose value moved are rewritten, delisted/sold-out wines drop, new arrivals add; unchanged rows stay byte-identical so `git diff` is a changelog. Prints only the `+N -M ~K` summary (also `.store-changes.txt`). `--sample N` reads N pages and prints without writing. Needs `pip install -r inventory/requirements.txt`.
-  - **Why the listing JSON, not static fetch:** totalwine.com listing/product pages sit behind PerimeterX and 403 every static fetch; price/stock are JS-hydrated. nodriver renders the real page (real Mac + home IP = the easy case) and reads `INITIAL_STATE`. pageSize caps at 200.
-- **Refresh = the `wine-inventory-refresh` skill** (or `bash inventory/refresh_inventory.sh`): pull → scan → commit/push the diff. A **biweekly launchd job** (`inventory/install_schedule.sh`, run once to activate) does it unattended. Troubleshooting lives in that skill.
-- If the scan breaks (site shape changed), fix `scan_store.py` **at home** — never fall back to live agent research in the aisle.
-- **Reference: `inventory/SCHEMA.md`** — the row schema (field-by-field), the `INITIAL_STATE` data path, endpoint/pageSize/pagination, in-stock & price logic, facets, the PerimeterX context, and the sitemap fallback. Read it before touching `scan_store.py`.
+The user may be shopping on a phone with a hard token budget. No live web scraping or research and no subagent fan-out during live shopping. Do not make photo-by-photo uploads the primary path.
 
-## Token discipline generally
+At the store, use the local inventory query script and the cellar/taste records. Query matches only; never load the raw inventory JSONL into context. If the index is missing or stale, say so and recommend from the cellar and general knowledge without live scraping. Refresh the index at home using `wine-inventory-refresh`.
 
-- Deterministic scripts > LLM web research. Scrape to disk, read summaries.
-- Never spawn agents that can spawn agents.
+Default to a concise phone-friendly recommendation. Give a detailed comparison table when asked. Keep questions to essential identification or purchase decisions.
+
+## Inventory refresh
+
+The Total Wine Centennial #2302 index is built at home. Read `inventory/SCHEMA.md` before changing `scan_store.py`; use `wine-inventory-refresh` for the scan workflow. Never run a refresh while the user is shopping in-store.
+
+## Shared references
+
+- The schema and local helper scripts live under `skill/scripts/`.
+- The public read-only view is intended at <https://effectorgraph.github.io/wine-cellar/cellar-view.html>. Do not claim a change is deployed until publication is confirmed.
+- Keep shared instructions free of personal names and machine-specific paths. Use the installed skill configuration to locate a clone.
