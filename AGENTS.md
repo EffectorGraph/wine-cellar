@@ -20,14 +20,15 @@ This is the canonical workflow guide for Codex and Claude. `CLAUDE.md` imports i
 - “We finished that” is enough to record consumption. Clarify only bottle identity, vintage, or count when needed. Dates and a verdict are optional. If the opening date is unknown, leave `opened_on` null; an impression may use its logged date and say the consumption date is unknown.
 - Preserve existing ratings, verdicts, and impression history. Add new impressions; do not replace prior notes. A new rating may update the verdict/status while retaining the history.
 - Use only an explicitly stated quantity. When finishing some duplicate bottles, choose those with the earliest `cellared_under` first and null target years last; leave the remaining rows unchanged.
-- Unknown vintage facts and drink windows can stay null and be researched later. Never block a quick purchase log on optional research.
+- Research every requested wine entry automatically using the wine-cellar skill, including photo entries and shipment additions. Defer only when the user explicitly requests capture-only or research later. Leave unsupported facts null after research; do not treat research as an optional follow-up.
+- New shipment quantities are additions to existing stock unless the user explicitly requests a total reconciliation. Preserve existing bottles and histories.
 - Recommendations are read-only. Record availability only when explicitly reported or verified; a recommendation is not evidence of opening or purchase.
 - When a `pending` or `cellared` row has an `opened_on` date, flag the history conflict. Confirm what happened before changing its status; setting an opening-year target alone does not resolve it.
 - Review at most three explicitly requested bottles in one catch-up. Do not turn review into a scheduled or mandatory checklist.
 
 ## Store sessions: keep them short
 
-The user may be shopping on a phone with a hard token budget. No live web scraping or research and no subagent fan-out during live shopping. Do not make photo-by-photo uploads the primary path.
+The user may be shopping on a phone with a hard token budget. Do not scrape live store inventory or use subagent fan-out during live shopping. Keep shopping recommendations concise; when the user asks to enter owned or purchased wines, the wine-cellar research requirement still applies unless the user explicitly defers it. Do not make photo-by-photo uploads the primary path.
 
 At the store, use the local inventory query script and the cellar/taste records. Query matches only; never load the raw inventory JSONL into context. If the index is missing or stale, say so and recommend from the cellar and general knowledge without live scraping. Refresh the index at home using `wine-inventory-refresh`.
 
