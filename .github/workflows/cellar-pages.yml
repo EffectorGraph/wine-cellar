@@ -1,7 +1,7 @@
 name: Validate and publish cellar
 on:
   push:
-    branches: [main, codex/phone-cellar]
+    branches: [main]
     paths: [cellar.jsonl, preferences.json, 'skill/scripts/**', .github/workflows/cellar-pages.yml]
   pull_request:
     paths: [cellar.jsonl, 'skill/scripts/**', .github/workflows/cellar-pages.yml]
@@ -24,7 +24,7 @@ jobs:
       - run: python3 skill/scripts/test_rebuild_publish.py
       - run: python3 skill/scripts/generate_view.py
   publish:
-    if: github.event_name != 'pull_request'
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     needs: validate
     runs-on: ubuntu-latest
     permissions:
