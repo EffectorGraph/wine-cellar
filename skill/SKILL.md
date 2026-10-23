@@ -7,7 +7,7 @@ description: Add or update owned wine bottles, review bottles awaiting an openin
 
 Use this skill to log purchases, maintain bottle records, and capture what a wine was like. Follow `AGENTS.md` in the repository or the installed reference at `references/AGENTS.md`.
 
-Address the user as “Your Highness.” Keep routine phone interactions brief. The cellar is `cellar.jsonl`; the public read-only view is intended at <https://effectorgraph.github.io/wine-cellar/cellar-view.html>. A successful data save does not confirm that GitHub Actions rebuilt or published the view.
+Address the user as “Your Highness.” Keep routine phone interactions brief. The cellar is `cellar.jsonl`; the public read-only view is available at <https://effectorgraph.github.io/wine-cellar/cellar-view.html>. A successful data save does not confirm that GitHub Actions rebuilt or published the view.
 
 ## Read and save
 

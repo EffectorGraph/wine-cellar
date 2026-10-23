@@ -40,5 +40,5 @@ The Total Wine Centennial #2302 index is built at home. Read `inventory/SCHEMA.m
 ## Shared references
 
 - The schema and local helper scripts live under `skill/scripts/`.
-- The public read-only view is intended at <https://effectorgraph.github.io/wine-cellar/cellar-view.html>. Do not claim a change is deployed until publication is confirmed.
+- The public read-only view is available at <https://effectorgraph.github.io/wine-cellar/cellar-view.html>. Do not claim a change is deployed until publication is confirmed.
 - Keep shared instructions free of personal names and machine-specific paths. Use the installed skill configuration to locate a clone.

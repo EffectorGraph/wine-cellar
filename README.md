@@ -2,7 +2,7 @@
 
 A shared wine cellar managed with JSONL and GitHub. The source of truth is `cellar.jsonl`; GitHub Actions validates it and rebuilds the read-only HTML view after source changes. A successful data save and a successful view build/publication are separate outcomes.
 
-The intended public read-only view is <https://effectorgraph.github.io/wine-cellar/cellar-view.html>. Its availability depends on GitHub Pages publication; do not assume a recent save is visible until Actions confirms it.
+Open the [mobile cellar](https://effectorgraph.github.io/wine-cellar/) or the stable [cellar-view.html URL](https://effectorgraph.github.io/wine-cellar/cellar-view.html). The footer shows generation time and source commit; a recent data save becomes visible only after the [publication workflow](https://github.com/EffectorGraph/wine-cellar/actions/workflows/cellar-pages.yml) succeeds.
 
 ## Skills
 
@@ -49,3 +49,11 @@ For local development, use the helpers under `skill/scripts/` and check the late
 ## Store inventory
 
 The local inventory index is a convenience snapshot, not guaranteed live stock. At the store, query it with `inventory/query_inventory.py`; do not load the raw JSONL or scrape the live site. If it is missing or stale, say that availability is unverified and recommend from the cellar and known preferences. Refresh at home with `wine-inventory-refresh`.
+
+## Checks and publication
+
+Run `python3 skill/scripts/validate_cellar.py`, `python3 skill/scripts/test_backend.py`, and `python3 skill/scripts/test_rebuild_publish.py` before shipping backend changes. Generate a local view with `python3 skill/scripts/generate_view.py`.
+
+The publication workflow validates source data, tests the backend, rebuilds from the latest branch contents, and commits only `cellar-view.html` and `index.html`. It retries a rejected push up to three times against fresh data without force-pushing. GitHub Pages receives only the generated HTML. If validation or publishing fails, source data can still be saved: inspect the failed Actions run before claiming that the website is current.
+
+The ID migration preserves previous fields and histories. Existing pending/cellared records with opening dates remain visible under Needs review and are excluded from Recorded available; reconcile them with the user rather than inferring consumption.

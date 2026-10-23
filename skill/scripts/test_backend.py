@@ -10,6 +10,8 @@ import os
 import subprocess
 import sys
 import tempfile
+import threading
+import time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -18,8 +20,8 @@ UPDATE = HERE / "update_wine.py"
 RESULTS = Path(tempfile.gettempdir()) / "wine_cellar_test_results.txt"
 
 sys.path.insert(0, str(HERE))
-from schema import (CANONICAL_KEYS, has_status_date_conflict, is_available, needs_review,
-                    sha256_file, validate_row)  # noqa: E402
+from schema import (CANONICAL_KEYS, has_status_date_conflict, is_available, locked_cellar,
+                    needs_review, sha256_file, validate_row)  # noqa: E402
 
 # A full payload plus quick-capture cases for fake bottles.
 SAMPLE = {
@@ -57,6 +59,38 @@ def check(name, cond, detail=""):
     results.append(line)
     print(line)
     return cond
+
+
+def race_writers(cellar, requests):
+    """Hold the shared lock while launching writers, then release them together."""
+    acquired = threading.Event()
+    release = threading.Event()
+
+    def hold_lock():
+        with locked_cellar(cellar):
+            acquired.set()
+            release.wait(10)
+
+    holder = threading.Thread(target=hold_lock, daemon=True)
+    holder.start()
+    if not acquired.wait(5):
+        release.set()
+        return []
+    processes = []
+    for script, payload in requests:
+        env = {**os.environ, "WINE_CELLAR_PATH": str(cellar)}
+        processes.append(subprocess.Popen(
+            [sys.executable, str(script)], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE, text=True, env=env,
+        ))
+    time.sleep(0.15)
+    release.set()
+    results = []
+    for process, (_, payload) in zip(processes, requests):
+        stdout, stderr = process.communicate(json.dumps(payload), timeout=10)
+        results.append((process.returncode, stdout, stderr))
+    holder.join(timeout=5)
+    return results
 
 
 def main():
@@ -259,6 +293,55 @@ def main():
             "set": {"status": "love"},
         }, cellar)
         all_ok &= check("update: no match -> nonzero exit", rc != 0)
+
+        # Concurrent updates share one expected digest: the file lock allows exactly one commit.
+        concurrent_cellar = Path(td) / "concurrent-updates.jsonl"
+        concurrent_rows = [
+            {**SAMPLE, "bottle_id": "00000000-0000-4000-8000-000000000101",
+             "status": "cellared", "verdict": None, "impressions": []},
+            {**SAMPLE, "bottle_id": "00000000-0000-4000-8000-000000000102",
+             "status": "cellared", "verdict": None, "impressions": []},
+        ]
+        concurrent_cellar.write_text("".join(json.dumps(r) + "\n" for r in concurrent_rows), encoding="utf-8")
+        common_hash = sha256_file(concurrent_cellar)
+        concurrent_results = race_writers(concurrent_cellar, [
+            (UPDATE, {"expected_sha256": common_hash,
+                      "match": {"bottle_id": concurrent_rows[0]["bottle_id"]},
+                      "set": {"verdict": "writer one"}}),
+            (UPDATE, {"expected_sha256": common_hash,
+                      "match": {"bottle_id": concurrent_rows[1]["bottle_id"]},
+                      "set": {"verdict": "writer two"}}),
+        ])
+        after_updates = [json.loads(line) for line in concurrent_cellar.read_text().splitlines()]
+        update_winners = [r.get("verdict") for r in after_updates if r.get("verdict")]
+        all_ok &= check("concurrent updates: one succeeds, one conflicts, other row is preserved",
+                        len(concurrent_results) == 2
+                        and sorted(rc for rc, _, _ in concurrent_results) == [0, 3]
+                        and len(update_winners) == 1
+                        and {r["bottle_id"] for r in after_updates} == {r["bottle_id"] for r in concurrent_rows})
+
+        # Append and update use the same lock and the same compare-and-swap contract.
+        mixed_cellar = Path(td) / "mixed-writers.jsonl"
+        mixed_row = {**SAMPLE, "bottle_id": "00000000-0000-4000-8000-000000000103",
+                     "status": "cellared", "verdict": None, "impressions": []}
+        mixed_cellar.write_text(json.dumps(mixed_row) + "\n", encoding="utf-8")
+        mixed_hash = sha256_file(mixed_cellar)
+        mixed_results = race_writers(mixed_cellar, [
+            (UPDATE, {"expected_sha256": mixed_hash,
+                      "match": {"bottle_id": mixed_row["bottle_id"]},
+                      "set": {"verdict": "update won"}}),
+            (APPEND, {"expected_sha256": mixed_hash, "wine": "Concurrent append"}),
+        ])
+        after_mixed = [json.loads(line) for line in mixed_cellar.read_text().splitlines()]
+        mixed_rcs = sorted(rc for rc, _, _ in mixed_results)
+        mixed_ok = len(mixed_results) == 2 and mixed_rcs == [0, 3]
+        if len(after_mixed) == 2:
+            mixed_ok &= after_mixed[0].get("verdict") is None and after_mixed[1].get("wine") == "Concurrent append"
+        elif len(after_mixed) == 1:
+            mixed_ok &= after_mixed[0].get("verdict") == "update won"
+        else:
+            mixed_ok = False
+        all_ok &= check("mixed append/update: shared lock preserves exactly one writer", mixed_ok)
 
     summary = f"\n{'ALL PASS' if all_ok else 'SOME FAILED'} — {len(results)} checks"
     print(summary)
